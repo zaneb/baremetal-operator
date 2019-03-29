@@ -31,7 +31,8 @@ var provisionRequeueDelay = time.Second * 10
 var powerRequeueDelay = time.Second * 10
 
 const (
-	ironicEndpoint = "http://localhost:6385/v1/"
+	ironicEndpoint    = "http://localhost:6385/v1/"
+	inspectorEndpoint = "http://localhost:5050/v1/"
 	// See nodes.Node.PowerState for details
 	powerOn   = "power on"
 	powerOff  = "power off"
@@ -51,10 +52,21 @@ type ironicProvisioner struct {
 	bmcCreds bmc.Credentials
 	// a client for talking to ironic
 	client *gophercloud.ServiceClient
+	// a client for talking to ironic-inspector
+	inspector *gophercloud.ServiceClient
 	// a logger configured for this host
 	log logr.Logger
 	// an event publisher for recording significant events
 	publisher provisioner.EventPublisher
+}
+
+// introspectionClient returns a new Ironic Inspector client
+func introspectionClient(endpoint string) (*gophercloud.ServiceClient, error) {
+	sc := new(gophercloud.ServiceClient)
+	sc.Endpoint = gophercloud.NormalizeURL(endpoint)
+	sc.ProviderClient = &gophercloud.ProviderClient{}
+	sc.Type = "baremetal-inspector"
+	return sc, nil
 }
 
 // New returns a new Ironic Provisioner
@@ -69,6 +81,12 @@ func New(host *metalkubev1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publis
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse BMC address information")
 	}
+	// TODO(zaneb): Replace this with a version from gophercloud once noauth
+	// support lands in https://github.com/gophercloud/gophercloud/pull/1531.
+	inspector, err := introspectionClient(inspectorEndpoint)
+	if err != nil {
+		return nil, err
+	}
 	// Ensure we have a microversion high enough to get the features
 	// we need.
 	client.Microversion = "1.50"
@@ -78,6 +96,7 @@ func New(host *metalkubev1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publis
 		bmcAccess: bmcAccess,
 		bmcCreds:  bmcCreds,
 		client:    client,
+		inspector: inspector,
 		log:       log.WithValues("host", host.Name),
 		publisher: publisher,
 	}
