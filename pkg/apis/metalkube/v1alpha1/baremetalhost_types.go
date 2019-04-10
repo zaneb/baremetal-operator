@@ -149,10 +149,13 @@ type Image struct {
 // FIXME(dhellmann): We probably want some other module to own these
 // data structures.
 
+type GHz float64
+type GiB int32
+
 // CPU describes one processor on the host.
 type CPU struct {
 	Type     string `json:"type"`
-	SpeedGHz int    `json:"speedGHz"`
+	SpeedGHz GHz    `json:"speedGHz"`
 }
 
 // Storage describes one storage device (disk, SSD, etc.) on the host.
@@ -163,8 +166,8 @@ type Storage struct {
 	// Type, e.g. SSD
 	Type string `json:"type"`
 
-	// The size of the disk in gigabyte
-	SizeGiB int `json:"sizeGiB"`
+	// The size of the disk in Gibibytes
+	SizeGiB GiB `json:"sizeGiB"`
 
 	// Hardware model
 	Model string `json:"model"`
@@ -194,7 +197,7 @@ type NIC struct {
 // HardwareDetails collects all of the information about hardware
 // discovered on the host.
 type HardwareDetails struct {
-	RAMGiB  int       `json:"ramGiB"`
+	RAMGiB  GiB       `json:"ramGiB"`
 	NIC     []NIC     `json:"nics"`
 	Storage []Storage `json:"storage"`
 	CPUs    []CPU     `json:"cpus"`
