@@ -1,6 +1,7 @@
 package ironic
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -333,6 +334,58 @@ func (p *ironicProvisioner) changeNodeProvisionState(ironicNode *nodes.Node, opt
 	return result, nil
 }
 
+func getNICDetails(ifdata []introspection.InterfaceType) []metalkubev1alpha1.NIC {
+	nics := make([]metalkubev1alpha1.NIC, len(ifdata))
+	for i, intf := range ifdata {
+		nics[i] = metalkubev1alpha1.NIC{
+			Name:      intf.Name,
+			Model:     fmt.Sprintf("%s %s", intf.Vendor, intf.Product),
+			MAC:       intf.MACAddress,
+			Network:   "Pod Networking", // TODO(zaneb)
+			IP:        intf.IPV4Address,
+			SpeedGbps: 0, // TODO(zaneb)
+		}
+	}
+	return nics
+}
+
+func getStorageDetails(diskdata []introspection.RootDiskType) []metalkubev1alpha1.Storage {
+	storage := make([]metalkubev1alpha1.Storage, len(diskdata))
+	for i, disk := range diskdata {
+		storage[i] = metalkubev1alpha1.Storage{
+			Name:    disk.Name,
+			Type:    map[bool]string{true: "HDD", false: "SSD"}[disk.Rotational],
+			SizeGiB: metalkubev1alpha1.GiB(disk.Size / (1024 * 1024 * 1024)),
+			Model:   fmt.Sprintf("%s %s", disk.Vendor, disk.Model),
+		}
+	}
+	return storage
+}
+
+func getCPUDetails(cpudata *introspection.CPUType) []metalkubev1alpha1.CPU {
+	var freq float64
+	fmt.Sscanf(cpudata.Frequency, "%fGHz", &freq)
+	cpu := metalkubev1alpha1.CPU{
+		Type:     cpudata.Architecture,
+		SpeedGHz: metalkubev1alpha1.GHz(freq),
+	}
+
+	cpus := make([]metalkubev1alpha1.CPU, cpudata.Count)
+	for i := range cpus {
+		cpus[i] = cpu
+	}
+	return cpus
+}
+
+func getHardwareDetails(data *introspection.Data) *metalkubev1alpha1.HardwareDetails {
+	details := new(metalkubev1alpha1.HardwareDetails)
+	details.RAMGiB = metalkubev1alpha1.GiB(data.MemoryMB / 1024)
+	details.NIC = getNICDetails(data.Inventory.Interfaces)
+	details.Storage = getStorageDetails(data.Inventory.Disks)
+	details.CPUs = getCPUDetails(&data.Inventory.CPU)
+	return details
+}
+
 // InspectHardware updates the HardwareDetails field of the host with
 // details of devices discovered on the hardware. It may be called
 // multiple times, and should return true for its dirty flag until the
@@ -389,49 +442,19 @@ func (p *ironicProvisioner) InspectHardware() (result provisioner.Result, err er
 
 	// Introspection is ongoing
 	if p.host.Status.HardwareDetails == nil {
-		p.log.Info("continuing inspection by setting details")
-		p.host.Status.HardwareDetails =
-			&metalkubev1alpha1.HardwareDetails{
-				RAMGiB: 128,
-				NIC: []metalkubev1alpha1.NIC{
-					metalkubev1alpha1.NIC{
-						Name:      "nic-1",
-						Model:     "virt-io",
-						Network:   "Pod Networking",
-						MAC:       "some:mac:address",
-						IP:        "192.168.100.1",
-						SpeedGbps: 1,
-					},
-					metalkubev1alpha1.NIC{
-						Name:      "nic-2",
-						Model:     "e1000",
-						Network:   "Pod Networking",
-						MAC:       "some:other:mac:address",
-						IP:        "192.168.100.2",
-						SpeedGbps: 1,
-					},
-				},
-				Storage: []metalkubev1alpha1.Storage{
-					metalkubev1alpha1.Storage{
-						Name:    "disk-1 (boot)",
-						Type:    "SSD",
-						SizeGiB: 1024 * 93,
-						Model:   "Dell CFJ61",
-					},
-					metalkubev1alpha1.Storage{
-						Name:    "disk-2",
-						Type:    "SSD",
-						SizeGiB: 1024 * 93,
-						Model:   "Dell CFJ61",
-					},
-				},
-				CPUs: []metalkubev1alpha1.CPU{
-					metalkubev1alpha1.CPU{
-						Type:     "x86",
-						SpeedGHz: 3,
-					},
-				},
-			}
+		p.log.Info("getting hardware details from inspection")
+		introData := introspection.GetIntrospectionData(p.inspector, ironicNode.UUID)
+		data, err := introData.Extract()
+		if err != nil {
+			return result, errors.Wrap(err, "failed to retrieve hardware introspection data")
+		}
+		if json_data, err := json.Marshal(introData.Body); err == nil {
+			p.log.Info("Received introspection data", "data", json_data)
+		} else {
+			p.log.Info("Error marshalling JSON introspection data", "error", err)
+		}
+
+		p.host.Status.HardwareDetails = getHardwareDetails(data)
 		p.publisher("InspectionComplete", "Hardware inspection completed")
 		result.Dirty = true
 	}
