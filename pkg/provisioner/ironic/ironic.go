@@ -13,6 +13,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/noauth"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
+	noauthintrospection "github.com/gophercloud/gophercloud/openstack/baremetalintrospection/noauth"
 	"github.com/gophercloud/gophercloud/openstack/baremetalintrospection/v1/introspection"
 
 	nodeutils "github.com/gophercloud/utils/openstack/baremetal/v1/nodes"
@@ -63,15 +64,6 @@ type ironicProvisioner struct {
 	publisher provisioner.EventPublisher
 }
 
-// introspectionClient returns a new Ironic Inspector client
-func introspectionClient(endpoint string) (*gophercloud.ServiceClient, error) {
-	sc := new(gophercloud.ServiceClient)
-	sc.Endpoint = gophercloud.NormalizeURL(endpoint)
-	sc.ProviderClient = &gophercloud.ProviderClient{}
-	sc.Type = "baremetal-inspector"
-	return sc, nil
-}
-
 // New returns a new Ironic Provisioner
 func New(host *metalkubev1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
 	client, err := noauth.NewBareMetalNoAuth(noauth.EndpointOpts{
@@ -84,9 +76,10 @@ func New(host *metalkubev1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publis
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse BMC address information")
 	}
-	// TODO(zaneb): Replace this with a version from gophercloud once noauth
-	// support lands in https://github.com/gophercloud/gophercloud/pull/1531.
-	inspector, err := introspectionClient(inspectorEndpoint)
+	inspector, err := noauthintrospection.NewBareMetalIntrospectionNoAuth(
+		noauthintrospection.EndpointOpts{
+			IronicInspectorEndpoint: inspectorEndpoint,
+		})
 	if err != nil {
 		return nil, err
 	}
