@@ -340,6 +340,14 @@ func (p *ironicProvisioner) changeNodeProvisionState(ironicNode *nodes.Node, opt
 func (p *ironicProvisioner) InspectHardware() (result provisioner.Result, err error) {
 	p.log.Info("inspecting hardware", "status", p.host.OperationalStatus())
 
+	// Introspection not started
+	if p.host.Status.Provisioning.State != metalkubev1alpha1.StateInspecting {
+		p.publisher("InspectionStarted", "Hardware inspection started")
+		p.host.Status.Provisioning.State = metalkubev1alpha1.StateInspecting
+		result.Dirty = true
+		return result, nil
+	}
+
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
 		return result, errors.Wrap(err, "failed to find existing host")
@@ -348,41 +356,39 @@ func (p *ironicProvisioner) InspectHardware() (result provisioner.Result, err er
 		return result, fmt.Errorf("no ironic node for host")
 	}
 
-	// Introspection not started
-	if p.host.Status.Provisioning.State != metalkubev1alpha1.StateInspecting {
-		manageBoot := true
-		start := introspection.StartIntrospection(p.inspector, ironicNode.UUID,
-			introspection.StartOpts{ManageBoot: &manageBoot})
-		if err := start.ExtractErr(); err != nil {
-			return result, errors.Wrap(err, "failed to begin hardware inspection")
+	status, err := introspection.GetIntrospectionStatus(p.inspector, ironicNode.UUID).Extract()
+	if err != nil {
+		if _, isNotFound := err.(gophercloud.ErrDefault404); isNotFound {
+			p.log.Info("starting new hardware inspection")
+			manageBoot := true
+			start := introspection.StartIntrospection(p.inspector,
+				ironicNode.UUID,
+				introspection.StartOpts{ManageBoot: &manageBoot})
+			if err := start.ExtractErr(); err != nil {
+				return result, errors.Wrap(err, "failed to begin hardware inspection")
+			}
+			result.Dirty = true
+			return result, nil
+		} else {
+			return result, errors.Wrap(err, "failed to extract hardware inspection status")
 		}
-		p.publisher("InspectionStarted", "Hardware inspection started")
-		p.log.Info("starting inspection by setting state")
-		p.host.Status.Provisioning.State = metalkubev1alpha1.StateInspecting
-		result.Dirty = true
+	}
+	if !status.Finished {
+		p.log.Info("inspection in progress", "started_at", status.StartedAt)
+		result.Dirty = true // make sure we check back
+		result.RequeueAfter = introspectionRequeueDelay
+		return result, nil
+	}
+	if status.Error != "" {
+		p.log.Info("inspection failed", "error", status.Error)
+		p.publisher("InspectionFailed",
+			fmt.Sprintf("Host introspection failed: %s", status.Error))
+		result.Dirty = p.host.SetErrorMessage(status.Error)
 		return result, nil
 	}
 
 	// Introspection is ongoing
 	if p.host.Status.HardwareDetails == nil {
-		status, err := introspection.GetIntrospectionStatus(p.inspector, ironicNode.UUID).Extract()
-		if err != nil {
-			return result, errors.Wrap(err, "failed to extract hardware inspection status")
-		}
-		if !status.Finished {
-			p.log.Info("inspection in progress")
-			result.Dirty = true // make sure we check back
-			result.RequeueAfter = introspectionRequeueDelay
-			return result, nil
-		}
-		if status.Error != "" {
-			p.log.Info("inspection failed: %s", status.Error)
-			p.publisher("InspectionFailed",
-				fmt.Sprintf("Host introspection failed: %s", status.Error))
-			result.Dirty = p.host.SetErrorMessage(status.Error)
-			return result, nil
-		}
-
 		p.log.Info("continuing inspection by setting details")
 		p.host.Status.HardwareDetails =
 			&metalkubev1alpha1.HardwareDetails{
