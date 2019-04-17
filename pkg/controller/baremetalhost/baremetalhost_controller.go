@@ -486,9 +486,14 @@ func (r *ReconcileBareMetalHost) actionInspecting(prov provisioner.Provisioner, 
 	// InspectHardware() return a value and store it here in this
 	// function. That would eliminate duplication in the provisioners
 	// and make this phase consistent with the structure of others.
-
-	// Line up a requeue if we could set the hardware profile
-	result.Requeue = info.host.NeedsHardwareProfile()
+	if !info.host.NeedsHardwareInspection() {
+		info.host.Status.Provisioning.State = metalkubev1alpha1.StateReady
+		// Induce Reconcile() to write the updated host status
+		result.Requeue = true
+	} else {
+		// Line up a requeue if we could set the hardware profile
+		result.Requeue = info.host.NeedsHardwareProfile()
+	}
 
 	return result, nil
 }
