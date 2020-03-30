@@ -18,6 +18,9 @@ const (
 	// hosts to block delete operations until the physical host can be
 	// deprovisioned.
 	BareMetalHostFinalizer string = "baremetalhost.metal3.io"
+
+	// StatusAnnotation is the annotation that holds the Status of BMH
+	StatusAnnotation = "baremetalhost.metal3.io/status"
 )
 
 // OperationalStatus represents the state of the host
