@@ -132,7 +132,9 @@ func tryReconcile(t *testing.T, r *ReconcileBareMetalHost, host *metal3v1alpha1.
 		// The FakeClient keeps a copy of the object we update, so we
 		// need to replace the one we have with the updated data in
 		// order to test it.
-		r.client.Get(goctx.TODO(), request.NamespacedName, host)
+		updatedHost := &metal3v1alpha1.BareMetalHost{}
+		r.client.Get(goctx.TODO(), request.NamespacedName, updatedHost)
+		updatedHost.DeepCopyInto(host)
 
 		if isDone(host, result) {
 			logger.Info("tryReconcile: loop done")
