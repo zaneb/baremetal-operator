@@ -67,20 +67,24 @@ crd_file=deploy/crds/metal3.io_baremetalhosts_crd.yaml
 crd_tmp=.crd.yaml.tmp
 
 .PHONY: lint
-lint: test-sec $GOPATH/bin/golint
+lint: test-sec $(GOPATH)/bin/golint
 	find ./pkg ./cmd -type f -name \*.go  |grep -v zz_ | xargs -L1 golint -set_exit_status
 	go vet ./pkg/... ./cmd/...
 	cp $(crd_file) $(crd_tmp); make generate; if ! diff -q $(crd_file) $(crd_tmp); then mv $(crd_tmp) $(crd_file); exit 1; else rm $(crd_tmp); fi
 
 .PHONY: test-sec
-test-sec: $GOPATH/bin/gosec
+test-sec: $(GOPATH)/bin/gosec
 	gosec -severity medium --confidence medium -quiet ./...
 
-$GOPATH/bin/gosec:
-	go get -u github.com/securego/gosec/cmd/gosec
+$(GOPATH)/bin/gosec:
+	go get -d golang.org/x/tools/go/packages
+	cd $(GOPATH)/src/golang.org/x/tools/go/packages; git checkout 8f9ed77dd8e51636de1225a7e25cf48778b97060^
+	go get -d github.com/securego/gosec/cmd/gosec
+	cd $(GOPATH)/src/github.com/securego/gosec/cmd/gosec; git checkout v2.3.0
+	go get github.com/securego/gosec/cmd/gosec
 
-$GOPATH/bin/golint:
-	go get -u golang.org/x/lint/golint
+$(GOPATH)/bin/golint:
+	go get golang.org/x/lint/golint
 
 .PHONY: docs
 docs: $(patsubst %.dot,%.png,$(wildcard docs/*.dot))
