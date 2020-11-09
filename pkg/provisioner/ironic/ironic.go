@@ -775,72 +775,70 @@ func (p *ironicProvisioner) UpdateHardwareState() (result provisioner.Result, er
 	return result, nil
 }
 
-func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node) (updates nodes.UpdateOpts, err error) {
-
-	hwProf, err := hardware.GetProfile(p.host.HardwareProfile())
-
-	if err != nil {
-		return updates, errors.Wrap(err,
-			fmt.Sprintf("Could not start provisioning with bad hardware profile %s",
-				p.host.HardwareProfile()))
-	}
-
-	// image_source
+func setOpt(optName string, value interface{}, dataPath string, data map[string]interface{}, updates nodes.UpdateOpts, log logr.Logger) nodes.UpdateOpts {
 	var op nodes.UpdateOp
-	if _, ok := ironicNode.InstanceInfo["image_source"]; !ok {
-		op = nodes.AddOp
-		p.log.Info("adding image_source")
-	} else {
-		op = nodes.ReplaceOp
-		p.log.Info("updating image_source")
+
+	current, present := data[optName]
+
+	var equal func(interface{}, interface{}) bool
+	equal = func(current, value interface{}) bool {
+		switch newVal := value.(type) {
+		case string:
+			if curStr, ok := current.(string); ok {
+				return newVal == curStr
+			}
+		case int:
+			if curInt, ok := current.(int); ok {
+				return newVal == curInt
+			}
+		case map[string]interface{}:
+			if curMap, ok := current.(map[string]interface{}); ok {
+				if len(curMap) != len(newVal) {
+					return false
+				}
+				for k, v := range newVal {
+					if curV, ok := curMap[k]; !ok || !equal(curV, v) {
+						return false
+					}
+				}
+				return true
+			}
+		}
+		return false
 	}
-	updates = append(
+
+	if !present {
+		op = nodes.AddOp
+		log.Info(fmt.Sprintf("adding %s", optName))
+	} else if !equal(current, value) {
+		op = nodes.ReplaceOp
+		log.Info(fmt.Sprintf("updating %s", optName))
+	} else {
+		return updates
+	}
+	return append(
 		updates,
 		nodes.UpdateOperation{
 			Op:    op,
-			Path:  "/instance_info/image_source",
-			Value: p.host.Spec.Image.URL,
+			Path:  fmt.Sprintf("/%s/%s", dataPath, optName),
+			Value: value,
 		},
 	)
+}
+
+func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node) (updates nodes.UpdateOpts, err error) {
+	setPropertiesOpt := func(optName string, value interface{}) {
+		updates = setOpt(optName, value, "properties", ironicNode.Properties, updates, p.log)
+	}
+	setInstanceOpt := func(optName string, value interface{}) {
+		updates = setOpt(optName, value, "instance_info", ironicNode.InstanceInfo, updates, p.log)
+	}
+
+	setInstanceOpt("image_source", p.host.Spec.Image.URL)
 
 	checksum, checksumType, _ := p.host.GetImageChecksum()
-
-	// image_os_hash_algo
-	if _, ok := ironicNode.InstanceInfo["image_os_hash_algo"]; !ok {
-		op = nodes.AddOp
-		p.log.Info("adding image_os_hash_algo")
-	} else {
-		op = nodes.ReplaceOp
-		p.log.Info("updating image_os_hash_algo")
-	}
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    op,
-			Path:  "/instance_info/image_os_hash_algo",
-			Value: checksumType,
-		},
-	)
-
-	// image_os_hash_value
-	if _, ok := ironicNode.InstanceInfo["image_os_hash_value"]; !ok {
-		op = nodes.AddOp
-		p.log.Info("adding image_os_hash_value")
-	} else {
-		op = nodes.ReplaceOp
-		p.log.Info("updating image_os_hash_value")
-	}
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    op,
-			Path:  "/instance_info/image_os_hash_value",
-			Value: checksum,
-		},
-	)
-
-	// image_checksum
-	//
+	setInstanceOpt("image_os_hash_algo", checksumType)
+	setInstanceOpt("image_os_hash_value", checksum)
 	// FIXME: For older versions of ironic that do not have
 	// https://review.opendev.org/#/c/711816/ failing to include the
 	// 'image_checksum' causes ironic to refuse to provision the
@@ -848,139 +846,52 @@ func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node) (update
 	// only want to do that for MD5, however, because those versions
 	// of ironic only support MD5 checksums.
 	if checksumType == string(metal3v1alpha1.MD5) {
-		if _, ok := ironicNode.InstanceInfo["image_checksum"]; !ok {
-			op = nodes.AddOp
-			p.log.Info("adding image_checksum")
-		} else {
-			op = nodes.ReplaceOp
-			p.log.Info("updating image_checksum")
-		}
+		setInstanceOpt("image_checksum", checksum)
+	}
+
+	if p.host.Spec.Image.DiskFormat != nil {
+		setInstanceOpt("image_disk_format", *p.host.Spec.Image.DiskFormat)
+	}
+
+	// instance_uuid
+	if ironicNode.InstanceUUID != string(p.host.ObjectMeta.UID) {
+		p.log.Info("setting instance_uuid")
 		updates = append(
 			updates,
 			nodes.UpdateOperation{
-				Op:    op,
-				Path:  "/instance_info/image_checksum",
-				Value: checksum,
+				Op:    nodes.ReplaceOp,
+				Path:  "/instance_uuid",
+				Value: string(p.host.ObjectMeta.UID),
 			},
 		)
 	}
 
-	if p.host.Spec.Image.DiskFormat != nil {
-		updates = append(updates, nodes.UpdateOperation{
-			Op:    nodes.AddOp,
-			Path:  "/instance_info/image_disk_format",
-			Value: *p.host.Spec.Image.DiskFormat,
-		})
-	}
-
-	// instance_uuid
-	p.log.Info("setting instance_uuid")
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    nodes.ReplaceOp,
-			Path:  "/instance_uuid",
-			Value: string(p.host.ObjectMeta.UID),
-		},
-	)
-
-	// root_gb
-	//
-	// FIXME(dhellmann): We have to provide something for the disk
-	// size until https://storyboard.openstack.org/#!/story/2005165 is
-	// fixed in ironic.
-	if _, ok := ironicNode.InstanceInfo["root_gb"]; !ok {
-		op = nodes.AddOp
-		p.log.Info("adding root_gb")
-	} else {
-		op = nodes.ReplaceOp
-		p.log.Info("updating root_gb")
-	}
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    op,
-			Path:  "/instance_info/root_gb",
-			Value: hwProf.RootGB,
-		},
-	)
-
-	// root_device
-	//
-	// FIXME(dhellmann): We need to specify the root device to receive
-	// the image. That should come from some combination of inspecting
-	// the host to see what is available and the hardware profile to
-	// give us instructions.
-	if _, ok := ironicNode.Properties["root_device"]; !ok {
-		op = nodes.AddOp
-		p.log.Info("adding root_device")
-	} else {
-		op = nodes.ReplaceOp
-		p.log.Info("updating root_device")
-	}
-
-	// hints
-	//
 	// If the user has provided explicit root device hints, they take
 	// precedence. Otherwise use the values from the hardware profile.
 	hints := devicehints.MakeHintMap(p.host.Status.Provisioning.RootDeviceHints)
 	p.log.Info("using root device", "hints", hints)
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    op,
-			Path:  "/properties/root_device",
-			Value: hints,
-		},
-	)
+	setPropertiesOpt("root_device", hints)
 
-	// cpu_arch
-	//
+	hwProf, err := hardware.GetProfile(p.host.HardwareProfile())
+	if err != nil {
+		return updates, errors.Wrap(err,
+			fmt.Sprintf("Could not start provisioning with bad hardware profile %s",
+				p.host.HardwareProfile()))
+	}
+	// FIXME(dhellmann): We have to provide something for the disk
+	// size until https://storyboard.openstack.org/#!/story/2005165 is
+	// fixed in ironic.
+	setInstanceOpt("root_gb", hwProf.RootGB)
+
 	// FIXME(dhellmann): This should come from inspecting the
 	// host.
-	if _, ok := ironicNode.Properties["cpu_arch"]; !ok {
-		op = nodes.AddOp
-		p.log.Info("adding cpu_arch")
-	} else {
-		op = nodes.ReplaceOp
-		p.log.Info("updating cpu_arch")
-	}
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    op,
-			Path:  "/properties/cpu_arch",
-			Value: hwProf.CPUArch,
-		},
-	)
+	setPropertiesOpt("cpu_arch", hwProf.CPUArch)
 
-	// local_gb
-	if _, ok := ironicNode.Properties["local_gb"]; !ok {
-		op = nodes.AddOp
-		p.log.Info("adding local_gb")
-	} else {
-		op = nodes.ReplaceOp
-		p.log.Info("updating local_gb")
-	}
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    op,
-			Path:  "/properties/local_gb",
-			Value: hwProf.LocalGB,
-		},
-	)
+	setPropertiesOpt("local_gb", hwProf.LocalGB)
 
 	// boot_mode
-	op, value := buildCapabilitiesValue(ironicNode, p.host.Status.Provisioning.BootMode)
-	updates = append(
-		updates,
-		nodes.UpdateOperation{
-			Op:    op,
-			Path:  "/properties/capabilities",
-			Value: value,
-		},
-	)
+	_, capabilities := buildCapabilitiesValue(ironicNode, p.host.Status.Provisioning.BootMode)
+	setPropertiesOpt("capabilities", capabilities)
 
 	return updates, nil
 }
@@ -1042,15 +953,17 @@ func (p *ironicProvisioner) setUpForProvisioning(ironicNode *nodes.Node, hostCon
 	if err != nil {
 		return result, errors.Wrap(err, "failed to update opts for node")
 	}
-	_, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
-	switch err.(type) {
-	case nil:
-	case gophercloud.ErrDefault409:
-		p.log.Info("could not update host settings in ironic, busy")
-		result.Dirty = true
-		return result, nil
-	default:
-		return result, errors.Wrap(err, "failed to update host settings in ironic")
+	if len(updates) > 0 {
+		_, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
+		switch err.(type) {
+		case nil:
+		case gophercloud.ErrDefault409:
+			p.log.Info("could not update host settings in ironic, busy")
+			result.Dirty = true
+			return result, nil
+		default:
+			return result, errors.Wrap(err, "failed to update host settings in ironic")
+		}
 	}
 
 	p.log.Info("validating host settings")
