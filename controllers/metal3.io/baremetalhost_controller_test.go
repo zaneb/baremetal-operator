@@ -1174,3 +1174,162 @@ func TestProvisionerIsReady(t *testing.T) {
 		},
 	)
 }
+
+func TestUpdateEventHandler(t *testing.T) {
+	cases := []struct {
+		name            string
+		event           event.UpdateEvent
+		expectedProcess bool
+	}{
+		{
+			name: "process-non-bmh-events",
+			event: event.UpdateEvent{
+				ObjectOld: &corev1.Secret{},
+				ObjectNew: &corev1.Secret{},
+			},
+			expectedProcess: true,
+		},
+		{
+			name: "process-generation-change",
+			event: event.UpdateEvent{
+				ObjectOld: &metal3v1alpha1.BareMetalHost{},
+				ObjectNew: &metal3v1alpha1.BareMetalHost{},
+				MetaOld:   &metav1.ObjectMeta{Generation: 0},
+				MetaNew:   &metav1.ObjectMeta{Generation: 1},
+			},
+
+			expectedProcess: true,
+		},
+		{
+			name: "skip-if-same-generation-finalizers-and-annotations",
+			event: event.UpdateEvent{
+				ObjectOld: &metal3v1alpha1.BareMetalHost{},
+				ObjectNew: &metal3v1alpha1.BareMetalHost{},
+				MetaOld: &metav1.ObjectMeta{
+					Generation: 0,
+					Finalizers: []string{metal3v1alpha1.BareMetalHostFinalizer},
+					Annotations: map[string]string{
+						metal3v1alpha1.PausedAnnotation: "true",
+					},
+				},
+				MetaNew: &metav1.ObjectMeta{
+					Generation: 0,
+					Finalizers: []string{metal3v1alpha1.BareMetalHostFinalizer},
+					Annotations: map[string]string{
+						metal3v1alpha1.PausedAnnotation: "true",
+					},
+				},
+			},
+
+			expectedProcess: false,
+		},
+		{
+			name: "process-same-generation-annotations-change",
+			event: event.UpdateEvent{
+				ObjectOld: &metal3v1alpha1.BareMetalHost{},
+				ObjectNew: &metal3v1alpha1.BareMetalHost{},
+				MetaOld: &metav1.ObjectMeta{
+					Generation:  0,
+					Finalizers:  []string{metal3v1alpha1.BareMetalHostFinalizer},
+					Annotations: map[string]string{},
+				},
+				MetaNew: &metav1.ObjectMeta{
+					Generation: 0,
+					Finalizers: []string{metal3v1alpha1.BareMetalHostFinalizer},
+					Annotations: map[string]string{
+						metal3v1alpha1.PausedAnnotation: "true",
+					},
+				},
+			},
+
+			expectedProcess: true,
+		},
+		{
+			name: "process-same-generation-finalizers-change",
+			event: event.UpdateEvent{
+				ObjectOld: &metal3v1alpha1.BareMetalHost{},
+				ObjectNew: &metal3v1alpha1.BareMetalHost{},
+				MetaOld: &metav1.ObjectMeta{
+					Generation: 0,
+					Finalizers: []string{},
+					Annotations: map[string]string{
+						metal3v1alpha1.PausedAnnotation: "true",
+					},
+				},
+				MetaNew: &metav1.ObjectMeta{
+					Generation: 0,
+					Finalizers: []string{metal3v1alpha1.BareMetalHostFinalizer},
+					Annotations: map[string]string{
+						metal3v1alpha1.PausedAnnotation: "true",
+					},
+				},
+			},
+
+			expectedProcess: true,
+		},
+		{
+			name: "process-same-generation-finalizers-and-annotation-change",
+			event: event.UpdateEvent{
+				ObjectOld: &metal3v1alpha1.BareMetalHost{},
+				ObjectNew: &metal3v1alpha1.BareMetalHost{},
+				MetaOld: &metav1.ObjectMeta{
+					Generation:  0,
+					Finalizers:  []string{},
+					Annotations: map[string]string{},
+				},
+				MetaNew: &metav1.ObjectMeta{
+					Generation: 0,
+					Finalizers: []string{metal3v1alpha1.BareMetalHostFinalizer},
+					Annotations: map[string]string{
+						metal3v1alpha1.PausedAnnotation: "true",
+					},
+				},
+			},
+
+			expectedProcess: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newTestReconciler()
+			assert.Equal(t, tc.expectedProcess, r.updateEventHandler(tc.event))
+		})
+	}
+}
+
+func TestErrorCountIncrementsAlways(t *testing.T) {
+
+	b := &metal3v1alpha1.BareMetalHost{}
+	assert.Equal(t, b.Status.ErrorCount, 0)
+
+	setErrorMessage(b, metal3v1alpha1.RegistrationError, "An error message")
+	assert.Equal(t, b.Status.ErrorCount, 1)
+
+	setErrorMessage(b, metal3v1alpha1.InspectionError, "Another error message")
+	assert.Equal(t, b.Status.ErrorCount, 2)
+}
+
+func TestClearErrorCount(t *testing.T) {
+
+	b := &metal3v1alpha1.BareMetalHost{
+		Status: metal3v1alpha1.BareMetalHostStatus{
+			ErrorCount: 5,
+		},
+	}
+
+	assert.True(t, clearError(b))
+	assert.Equal(t, 0, b.Status.ErrorCount)
+}
+
+func TestClearErrorCountOnlyIfNotZero(t *testing.T) {
+
+	b := &metal3v1alpha1.BareMetalHost{
+		Status: metal3v1alpha1.BareMetalHostStatus{
+			ErrorCount: 5,
+		},
+	}
+
+	assert.True(t, clearError(b))
+	assert.False(t, clearError(b))
+}
