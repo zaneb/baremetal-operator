@@ -1151,8 +1151,7 @@ func (p *ironicProvisioner) Provision(hostConf provisioner.HostConfigData) (resu
 			// top of relational databases...
 			if ironicNode.LastError == "" {
 				p.log.Info("failed but error message not available")
-				result.Dirty = true
-				return result, nil
+				return retryAfterDelay(provisionRequeueDelay)
 			}
 			p.log.Info("found error", "msg", ironicNode.LastError)
 			result.ErrorMessage = fmt.Sprintf("Image provisioning failed: %s",
@@ -1532,9 +1531,7 @@ func (p *ironicProvisioner) PowerOff() (result provisioner.Result, err error) {
 		case SoftPowerOffUnsupportedError, SoftPowerOffFailed:
 			return p.hardPowerOff()
 		case HostLockedError:
-			result.RequeueAfter = powerRequeueDelay
-			result.Dirty = true
-			return result, nil
+			return retryAfterDelay(powerRequeueDelay)
 		default:
 			result.RequeueAfter = powerRequeueDelay
 			return result, err
