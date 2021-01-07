@@ -340,7 +340,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 
 	ironicNode, err = p.findExistingHost()
 	if err != nil {
-		return result, errors.Wrap(err, "failed to find existing host")
+		return transientError(errors.Wrap(err, "failed to find existing host"))
 	}
 
 	// Some BMC types require a MAC address, so ensure we have one
@@ -382,7 +382,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 			}).Extract()
 		// FIXME(dhellmann): Handle 409 and 503? errors here.
 		if err != nil {
-			return result, errors.Wrap(err, "failed to register host in ironic")
+			return transientError(errors.Wrap(err, "failed to register host in ironic"))
 		}
 		p.publisher("Registered", "Registered new host")
 
@@ -406,7 +406,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 					PXEEnabled: &enable,
 				}).Extract()
 			if err != nil {
-				return result, errors.Wrap(err, "failed to create port in ironic")
+				return transientError(errors.Wrap(err, "failed to create port in ironic"))
 			}
 		}
 
@@ -425,7 +425,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 		if imageData != nil {
 			updates, err := p.getImageUpdateOptsForNode(ironicNode, imageData)
 			if err != nil {
-				return result, errors.Wrap(err, "Could not get Image options for node")
+				return transientError(errors.Wrap(err, "Could not get Image options for node"))
 			}
 			if len(updates) != 0 {
 				_, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
@@ -435,7 +435,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 					p.log.Info("could not update host settings in ironic, busy")
 					return retryAfterDelay(provisionRequeueDelay)
 				default:
-					return result, errors.Wrap(err, "failed to update host settings in ironic")
+					return transientError(errors.Wrap(err, "failed to update host settings in ironic"))
 				}
 			}
 		}
@@ -467,7 +467,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 				p.log.Info("could not update ironic node name, busy")
 				return retryAfterDelay(provisionRequeueDelay)
 			default:
-				return result, errors.Wrap(err, "failed to update ironc node name")
+				return transientError(errors.Wrap(err, "failed to update ironc node name"))
 			}
 			p.log.Info("updated ironic node name")
 
@@ -490,7 +490,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 				p.log.Info("could not update host driver settings, busy")
 				return retryAfterDelay(provisionRequeueDelay)
 			default:
-				return result, errors.Wrap(err, "failed to update host driver settings")
+				return transientError(errors.Wrap(err, "failed to update host driver settings"))
 			}
 			p.log.Info("updated host driver settings")
 			// We don't return here because we also have to set the
@@ -574,8 +574,8 @@ func (p *ironicProvisioner) tryChangeNodeProvisionState(ironicNode *nodes.Node, 
 		result, err = retryAfterDelay(provisionRequeueDelay)
 		return
 	default:
-		err = errors.Wrap(changeResult.Err,
-			fmt.Sprintf("failed to change provisioning state to %q", opts.Target))
+		result, err = transientError(errors.Wrap(changeResult.Err,
+			fmt.Sprintf("failed to change provisioning state to %q", opts.Target)))
 		return
 	}
 
@@ -597,11 +597,12 @@ func (p *ironicProvisioner) InspectHardware(force bool) (result provisioner.Resu
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
-		err = errors.Wrap(err, "failed to find existing host")
+		result, err = transientError(errors.Wrap(err, "failed to find existing host"))
 		return
 	}
 	if ironicNode == nil {
-		return result, nil, provisioner.NeedsRegistration
+		result, err = transientError(provisioner.NeedsRegistration)
+		return
 	}
 
 	status, err := introspection.GetIntrospectionStatus(p.inspector, ironicNode.UUID).Extract()
@@ -639,7 +640,7 @@ func (p *ironicProvisioner) InspectHardware(force bool) (result provisioner.Resu
 					result, err = retryAfterDelay(provisionRequeueDelay)
 					return
 				default:
-					err = errors.Wrap(err, "failed to update host boot mode settings in ironic")
+					result, err = transientError(errors.Wrap(err, "failed to update host boot mode settings in ironic"))
 					return
 				}
 
@@ -655,7 +656,7 @@ func (p *ironicProvisioner) InspectHardware(force bool) (result provisioner.Resu
 				return
 			}
 		}
-		err = errors.Wrap(err, "failed to extract hardware inspection status")
+		result, err = transientError(errors.Wrap(err, "failed to extract hardware inspection status"))
 		return
 	}
 	if !status.Finished {
@@ -674,7 +675,7 @@ func (p *ironicProvisioner) InspectHardware(force bool) (result provisioner.Resu
 	introData := introspection.GetIntrospectionData(p.inspector, ironicNode.UUID)
 	data, err := introData.Extract()
 	if err != nil {
-		err = errors.Wrap(err, "failed to retrieve hardware introspection data")
+		result, err = transientError(errors.Wrap(err, "failed to retrieve hardware introspection data"))
 		return
 	}
 	p.log.Info("received introspection data", "data", introData.Body)
@@ -695,10 +696,10 @@ func (p *ironicProvisioner) UpdateHardwareState() (result provisioner.Result, er
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
-		return result, errors.Wrap(err, "failed to find existing host")
+		return transientError(errors.Wrap(err, "failed to find existing host"))
 	}
 	if ironicNode == nil {
-		return result, provisioner.NeedsRegistration
+		return transientError(provisioner.NeedsRegistration)
 	}
 
 	var discoveredVal bool
@@ -1000,7 +1001,7 @@ func (p *ironicProvisioner) startProvisioning(ironicNode *nodes.Node, hostConf p
 
 	updates, err := p.getUpdateOptsForNode(ironicNode)
 	if err != nil {
-		return result, errors.Wrap(err, "failed to update opts for node")
+		return transientError(errors.Wrap(err, "failed to update opts for node"))
 	}
 	_, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
 	switch err.(type) {
@@ -1009,7 +1010,7 @@ func (p *ironicProvisioner) startProvisioning(ironicNode *nodes.Node, hostConf p
 		p.log.Info("could not update host settings in ironic, busy")
 		return retryAfterDelay(provisionRequeueDelay)
 	default:
-		return result, errors.Wrap(err, "failed to update host settings in ironic")
+		return transientError(errors.Wrap(err, "failed to update host settings in ironic"))
 	}
 
 	p.log.Info("validating host settings")
@@ -1021,7 +1022,7 @@ func (p *ironicProvisioner) startProvisioning(ironicNode *nodes.Node, hostConf p
 		p.log.Info("could not validate host during registration, busy")
 		return retryAfterDelay(provisionRequeueDelay)
 	default:
-		return result, errors.Wrap(err, "failed to validate host during registration")
+		return transientError(errors.Wrap(err, "failed to validate host during registration"))
 	}
 	if errorMessage != "" {
 		result.ErrorMessage = errorMessage
@@ -1047,19 +1048,16 @@ func (p *ironicProvisioner) Adopt(force bool) (result provisioner.Result, err er
 	var ironicNode *nodes.Node
 
 	if ironicNode, err = p.findExistingHost(); err != nil {
-		err = errors.Wrap(err, "could not find host to adpot")
-		return
+		return transientError(errors.Wrap(err, "could not find host to adpot"))
 	}
 	if ironicNode == nil {
-		err = provisioner.NeedsRegistration
-		return
+		return transientError(provisioner.NeedsRegistration)
 	}
 
 	switch nodes.ProvisionState(ironicNode.ProvisionState) {
 	case nodes.Enroll, nodes.Verifying:
-		err = fmt.Errorf("Invalid state for adopt: %s",
-			ironicNode.ProvisionState)
-		return
+		return transientError(fmt.Errorf("Invalid state for adopt: %s",
+			ironicNode.ProvisionState))
 	case nodes.Manageable:
 		_, hasImageSource := ironicNode.InstanceInfo["image_source"]
 		_, hasBootISO := ironicNode.InstanceInfo["boot_iso"]
@@ -1108,10 +1106,10 @@ func (p *ironicProvisioner) Provision(hostConf provisioner.HostConfigData) (resu
 	var ironicNode *nodes.Node
 
 	if ironicNode, err = p.findExistingHost(); err != nil {
-		return result, errors.Wrap(err, "could not find host to receive image")
+		return transientError(errors.Wrap(err, "could not find host to receive image"))
 	}
 	if ironicNode == nil {
-		return result, provisioner.NeedsRegistration
+		return transientError(provisioner.NeedsRegistration)
 	}
 
 	p.log.Info("provisioning image to host", "state", ironicNode.ProvisionState)
@@ -1176,17 +1174,17 @@ func (p *ironicProvisioner) Provision(hostConf provisioner.HostConfigData) (resu
 		// Retrieve cloud-init user data
 		userData, err := hostConf.UserData()
 		if err != nil {
-			return result, errors.Wrap(err, "could not retrieve user data")
+			return transientError(errors.Wrap(err, "could not retrieve user data"))
 		}
 
 		// Retrieve cloud-init network_data.json. Default value is empty
 		networkDataRaw, err := hostConf.NetworkData()
 		if err != nil {
-			return result, errors.Wrap(err, "could not retrieve network data")
+			return transientError(errors.Wrap(err, "could not retrieve network data"))
 		}
 		var networkData map[string]interface{}
 		if err = yaml.Unmarshal([]byte(networkDataRaw), &networkData); err != nil {
-			return result, errors.Wrap(err, "failed to unmarshal network_data.json from secret")
+			return transientError(errors.Wrap(err, "failed to unmarshal network_data.json from secret"))
 		}
 
 		// Retrieve cloud-init meta_data.json with falback to default
@@ -1199,11 +1197,11 @@ func (p *ironicProvisioner) Provision(hostConf provisioner.HostConfigData) (resu
 		}
 		metaDataRaw, err := hostConf.MetaData()
 		if err != nil {
-			return result, errors.Wrap(err, "could not retrieve metadata")
+			return transientError(errors.Wrap(err, "could not retrieve metadata"))
 		}
 		if metaDataRaw != "" {
 			if err = yaml.Unmarshal([]byte(metaDataRaw), &metaData); err != nil {
-				return result, errors.Wrap(err, "failed to unmarshal metadata from secret")
+				return transientError(errors.Wrap(err, "failed to unmarshal metadata from secret"))
 			}
 		}
 
@@ -1215,7 +1213,7 @@ func (p *ironicProvisioner) Provision(hostConf provisioner.HostConfigData) (resu
 				NetworkData: networkData,
 			}
 			if err != nil {
-				return result, errors.Wrap(err, "failed to build config drive")
+				return transientError(errors.Wrap(err, "failed to build config drive"))
 			}
 			p.log.Info("triggering provisioning with config drive")
 		} else {
@@ -1264,7 +1262,7 @@ func (p *ironicProvisioner) setMaintenanceFlag(ironicNode *nodes.Node, value boo
 		p.log.Info("could not set host maintenance flag, busy")
 		return retryAfterDelay(provisionRequeueDelay)
 	default:
-		return result, errors.Wrap(err, "failed to set host maintenance flag")
+		return transientError(errors.Wrap(err, "failed to set host maintenance flag"))
 	}
 	return operationContinuing(0)
 }
@@ -1277,10 +1275,10 @@ func (p *ironicProvisioner) Deprovision(force bool) (result provisioner.Result, 
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
-		return result, errors.Wrap(err, "failed to find existing host")
+		return transientError(errors.Wrap(err, "failed to find existing host"))
 	}
 	if ironicNode == nil {
-		return result, provisioner.NeedsRegistration
+		return transientError(provisioner.NeedsRegistration)
 	}
 
 	p.log.Info("deprovisioning host",
@@ -1360,7 +1358,8 @@ func (p *ironicProvisioner) Deprovision(force bool) (result provisioner.Result, 
 		)
 
 	default:
-		return result, fmt.Errorf("Unhandled ironic state %s", ironicNode.ProvisionState)
+		// FIXME(zaneb): this error is unlikely to actually be transient
+		return transientError(fmt.Errorf("Unhandled ironic state %s", ironicNode.ProvisionState))
 	}
 }
 
@@ -1371,7 +1370,7 @@ func (p *ironicProvisioner) Delete() (result provisioner.Result, err error) {
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
-		return result, errors.Wrap(err, "failed to find existing host")
+		return transientError(errors.Wrap(err, "failed to find existing host"))
 	}
 	if ironicNode == nil {
 		p.log.Info("no node found, already deleted")
@@ -1421,7 +1420,7 @@ func (p *ironicProvisioner) Delete() (result provisioner.Result, err error) {
 	case gophercloud.ErrDefault404:
 		p.log.Info("did not find host to delete, OK")
 	default:
-		return result, errors.Wrap(err, "failed to remove host")
+		return transientError(errors.Wrap(err, "failed to remove host"))
 	}
 
 	return operationContinuing(0)
@@ -1464,7 +1463,7 @@ func (p *ironicProvisioner) changePower(ironicNode *nodes.Node, target nodes.Tar
 		return result, SoftPowerOffUnsupportedError{Address: p.host.Spec.BMC.Address}
 	default:
 		p.log.Info("power change error", "message", changeResult.Err)
-		return result, errors.Wrap(changeResult.Err, "failed to change power state")
+		return transientError(errors.Wrap(changeResult.Err, "failed to change power state"))
 	}
 }
 
@@ -1475,7 +1474,7 @@ func (p *ironicProvisioner) PowerOn() (result provisioner.Result, err error) {
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
-		return result, errors.Wrap(err, "failed to find existing host")
+		return transientError(errors.Wrap(err, "failed to find existing host"))
 	}
 
 	p.log.Info("checking current state",
@@ -1488,8 +1487,11 @@ func (p *ironicProvisioner) PowerOn() (result provisioner.Result, err error) {
 			return operationContinuing(powerRequeueDelay)
 		}
 		result, err = p.changePower(ironicNode, nodes.PowerOn)
-		if err != nil {
-			return result, errors.Wrap(err, "failed to power on host")
+		switch err.(type) {
+		case nil:
+		case HostLockedError:
+		default:
+			return transientError(errors.Wrap(err, "failed to power on host"))
 		}
 		p.publisher("PowerOn", "Host powered on")
 	}
@@ -1512,8 +1514,7 @@ func (p *ironicProvisioner) PowerOff() (result provisioner.Result, err error) {
 		case HostLockedError:
 			return retryAfterDelay(powerRequeueDelay)
 		default:
-			result.RequeueAfter = powerRequeueDelay
-			return result, err
+			return transientError(err)
 		}
 	}
 	return result, nil
@@ -1525,7 +1526,7 @@ func (p *ironicProvisioner) hardPowerOff() (result provisioner.Result, err error
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
-		return result, errors.Wrap(err, "failed to find existing host")
+		return transientError(errors.Wrap(err, "failed to find existing host"))
 	}
 
 	if ironicNode.PowerState != powerOff {
@@ -1535,7 +1536,7 @@ func (p *ironicProvisioner) hardPowerOff() (result provisioner.Result, err error
 		}
 		result, err = p.changePower(ironicNode, nodes.PowerOff)
 		if err != nil {
-			return result, errors.Wrap(err, "failed to power off host")
+			return transientError(errors.Wrap(err, "failed to power off host"))
 		}
 		p.publisher("PowerOff", "Host powered off")
 		return result, err
@@ -1554,7 +1555,7 @@ func (p *ironicProvisioner) softPowerOff() (result provisioner.Result, err error
 
 	ironicNode, err := p.findExistingHost()
 	if err != nil {
-		return result, errors.Wrap(err, "failed to find existing host")
+		return transientError(errors.Wrap(err, "failed to find existing host"))
 	}
 
 	if ironicNode.PowerState != powerOff {
@@ -1571,8 +1572,7 @@ func (p *ironicProvisioner) softPowerOff() (result provisioner.Result, err error
 		}
 		result, err = p.changePower(ironicNode, nodes.SoftPowerOff)
 		if err != nil {
-			result.RequeueAfter = powerRequeueDelay
-			return result, err
+			return transientError(err)
 		}
 		p.publisher("PowerOff", "Host soft powered off")
 	}
