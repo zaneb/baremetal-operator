@@ -22,6 +22,7 @@ func TestProvision(t *testing.T) {
 		ironic               *testserver.IronicMock
 		expectedDirty        bool
 		expectedError        bool
+		expectedErrorMessage bool
 		expectedRequestAfter int
 	}{
 		{
@@ -31,7 +32,8 @@ func TestProvision(t *testing.T) {
 				UUID:           nodeUUID,
 			}),
 			expectedRequestAfter: 0,
-			expectedDirty:        true,
+			expectedDirty:        false,
+			expectedErrorMessage: true,
 		},
 		{
 			name: "manageable state",
@@ -49,7 +51,8 @@ func TestProvision(t *testing.T) {
 				UUID:           nodeUUID,
 			}),
 			expectedRequestAfter: 0,
-			expectedDirty:        true,
+			expectedDirty:        false,
+			expectedErrorMessage: true,
 		},
 		{
 			name: "active state",
@@ -99,6 +102,11 @@ func TestProvision(t *testing.T) {
 
 			assert.Equal(t, tc.expectedDirty, result.Dirty)
 			assert.Equal(t, time.Second*time.Duration(tc.expectedRequestAfter), result.RequeueAfter)
+			if !tc.expectedErrorMessage {
+				assert.Equal(t, "", result.ErrorMessage)
+			} else {
+				assert.NotEqual(t, "", result.ErrorMessage)
+			}
 			if !tc.expectedError {
 				assert.NoError(t, err)
 			} else {
