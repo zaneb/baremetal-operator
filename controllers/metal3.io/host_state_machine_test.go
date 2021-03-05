@@ -18,7 +18,7 @@ import (
 
 func testStateMachine(host *metal3v1alpha1.BareMetalHost) *hostStateMachine {
 	r := newTestReconciler()
-	p, _ := r.ProvisionerFactory(host, bmc.Credentials{},
+	p, _ := r.ProvisionerFactory(*host.DeepCopy(), bmc.Credentials{},
 		func(reason, message string) {})
 	return newHostStateMachine(host, r, p, true)
 }
@@ -234,8 +234,9 @@ func TestErrorCountIncreasedWhenRegistrationFails(t *testing.T) {
 func TestErrorCountCleared(t *testing.T) {
 
 	tests := []struct {
-		Scenario string
-		Host     *metal3v1alpha1.BareMetalHost
+		Scenario                     string
+		Host                         *metal3v1alpha1.BareMetalHost
+		PreserveErrorCountOnComplete bool
 	}{
 		{
 			Scenario: "registering",
@@ -246,8 +247,9 @@ func TestErrorCountCleared(t *testing.T) {
 			Host:     host(metal3v1alpha1.StateInspecting).build(),
 		},
 		{
-			Scenario: "ready",
-			Host:     host(metal3v1alpha1.StateReady).build(),
+			Scenario:                     "ready",
+			Host:                         host(metal3v1alpha1.StateReady).build(),
+			PreserveErrorCountOnComplete: true,
 		},
 		{
 			Scenario: "deprovisioning",
@@ -258,8 +260,9 @@ func TestErrorCountCleared(t *testing.T) {
 			Host:     host(metal3v1alpha1.StateProvisioning).SetImageURL("imageSpecUrl").build(),
 		},
 		{
-			Scenario: "externallyProvisioned",
-			Host:     host(metal3v1alpha1.StateExternallyProvisioned).SetExternallyProvisioned().build(),
+			Scenario:                     "externallyProvisioned",
+			Host:                         host(metal3v1alpha1.StateExternallyProvisioned).SetExternallyProvisioned().build(),
+			PreserveErrorCountOnComplete: true,
 		},
 	}
 	for _, tt := range tests {
@@ -272,8 +275,69 @@ func TestErrorCountCleared(t *testing.T) {
 			prov.setNextResult(true)
 			result := hsm.ReconcileState(info)
 
-			assert.Equal(t, tt.Host.Status.ErrorCount, 0)
+			assert.Equal(t, 1, tt.Host.Status.ErrorCount)
 			assert.True(t, result.Dirty())
+
+			prov.setNextResult(false)
+			hsm.ReconcileState(info)
+			if tt.PreserveErrorCountOnComplete {
+				assert.Equal(t, 1, tt.Host.Status.ErrorCount)
+			} else {
+				assert.Equal(t, 0, tt.Host.Status.ErrorCount)
+			}
+		})
+	}
+}
+
+func TestErrorClean(t *testing.T) {
+
+	tests := []struct {
+		Scenario    string
+		Host        *metal3v1alpha1.BareMetalHost
+		SecretName  string
+		ExpectError bool
+	}{
+		{
+			Scenario: "clean-after-registration-error",
+			Host: host(metal3v1alpha1.StateInspecting).
+				SetStatusError(metal3v1alpha1.OperationalStatusError, metal3v1alpha1.RegistrationError, "some error", 1).
+				build(),
+		},
+		{
+			Scenario: "not-clean-after-provisioned-registration-error",
+			Host: host(metal3v1alpha1.StateInspecting).
+				SetStatusError(metal3v1alpha1.OperationalStatusError, metal3v1alpha1.ProvisionedRegistrationError, "some error", 1).
+				build(),
+			ExpectError: true,
+		},
+		{
+			Scenario: "clean-after-creds-change",
+			Host: host(metal3v1alpha1.StateReady).
+				SetStatusError(metal3v1alpha1.OperationalStatusError, metal3v1alpha1.InspectionError, "some error", 1).
+				build(),
+			SecretName: "NewCreds",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.Scenario, func(t *testing.T) {
+			prov := &mockProvisioner{}
+			hsm := newHostStateMachine(tt.Host, &BareMetalHostReconciler{}, prov, true)
+
+			info := makeDefaultReconcileInfo(tt.Host)
+			if tt.SecretName != "" {
+				info.bmcCredsSecret.Name = tt.SecretName
+			}
+
+			hsm.ReconcileState(info)
+
+			if tt.ExpectError {
+				assert.Equal(t, tt.Host.Status.ErrorType, v1alpha1.ProvisionedRegistrationError)
+				assert.NotEmpty(t, tt.Host.Status.ErrorMessage)
+			} else {
+				assert.Equal(t, tt.Host.Status.OperationalStatus, v1alpha1.OperationalStatusOK)
+				assert.Empty(t, tt.Host.Status.ErrorType)
+				assert.Empty(t, tt.Host.Status.ErrorMessage)
+			}
 		})
 	}
 }
@@ -323,6 +387,15 @@ func (hb *hostBuilder) SetImageURL(url string) *hostBuilder {
 	return hb
 }
 
+func (hb *hostBuilder) SetStatusError(opStatus metal3v1alpha1.OperationalStatus, errType metal3v1alpha1.ErrorType, errMsg string, errCount int) *hostBuilder {
+	hb.Status.OperationalStatus = opStatus
+	hb.Status.ErrorType = errType
+	hb.Status.ErrorMessage = errMsg
+	hb.Status.ErrorCount = errCount
+
+	return hb
+}
+
 func makeDefaultReconcileInfo(host *metal3v1alpha1.BareMetalHost) *reconcileInfo {
 	return &reconcileInfo{
 		log:     logf.Log.WithName("controllers").WithName("BareMetalHost").WithName("host_state_machine"),
@@ -355,16 +428,17 @@ func (m *mockProvisioner) setNextResult(dirty bool) {
 	}
 }
 
-func (m *mockProvisioner) ValidateManagementAccess(credentialsChanged bool) (result provisioner.Result, err error) {
-	return m.nextResult, err
+func (m *mockProvisioner) ValidateManagementAccess(credentialsChanged, force bool) (result provisioner.Result, provID string, err error) {
+	return m.nextResult, "", err
 }
 
-func (m *mockProvisioner) InspectHardware() (result provisioner.Result, details *metal3v1alpha1.HardwareDetails, err error) {
+func (m *mockProvisioner) InspectHardware(force bool) (result provisioner.Result, details *metal3v1alpha1.HardwareDetails, err error) {
+	details = &metal3v1alpha1.HardwareDetails{}
 	return m.nextResult, details, err
 }
 
-func (m *mockProvisioner) UpdateHardwareState() (result provisioner.Result, err error) {
-	return m.nextResult, err
+func (m *mockProvisioner) UpdateHardwareState() (hwState provisioner.HardwareState, err error) {
+	return
 }
 
 func (m *mockProvisioner) Adopt(force bool) (result provisioner.Result, err error) {
@@ -375,7 +449,7 @@ func (m *mockProvisioner) Provision(configData provisioner.HostConfigData) (resu
 	return m.nextResult, err
 }
 
-func (m *mockProvisioner) Deprovision() (result provisioner.Result, err error) {
+func (m *mockProvisioner) Deprovision(force bool) (result provisioner.Result, err error) {
 	return m.nextResult, err
 }
 
