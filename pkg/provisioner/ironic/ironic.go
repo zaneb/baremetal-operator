@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/go-logr/logr"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
@@ -133,6 +135,8 @@ type ironicProvisioner struct {
 	host metal3v1alpha1.BareMetalHost
 	// a shorter path to the provisioning status data structure
 	status *metal3v1alpha1.ProvisionStatus
+	// the object metadata of the BareMetalHost resource
+	objectMeta metav1.ObjectMeta
 	// access parameters for the BMC
 	bmcAccess bmc.AccessDetails
 	// credentials to log in to the BMC
@@ -192,14 +196,15 @@ func newProvisionerWithIronicClients(host metal3v1alpha1.BareMetalHost, bmcCreds
 	// we need.
 	clientIronic.Microversion = "1.56"
 	p := &ironicProvisioner{
-		host:      host,
-		status:    &(host.Status.Provisioning),
-		bmcAccess: bmcAccess,
-		bmcCreds:  bmcCreds,
-		client:    clientIronic,
-		inspector: clientInspector,
-		log:       log.WithValues("host", host.Name),
-		publisher: publisher,
+		host:       host,
+		status:     &(host.Status.Provisioning),
+		objectMeta: host.ObjectMeta,
+		bmcAccess:  bmcAccess,
+		bmcCreds:   bmcCreds,
+		client:     clientIronic,
+		inspector:  clientInspector,
+		log:        log.WithValues("host", host.Name),
+		publisher:  publisher,
 	}
 
 	return p, nil
@@ -303,18 +308,18 @@ func (p *ironicProvisioner) findExistingHost() (ironicNode *nodes.Node, err erro
 	}
 
 	// Try to load the node by name
-	p.log.Info("looking for existing node by name", "name", p.host.Name)
-	ironicNode, err = nodes.Get(p.client, p.host.Name).Extract()
+	p.log.Info("looking for existing node by name", "name", p.objectMeta.Name)
+	ironicNode, err = nodes.Get(p.client, p.objectMeta.Name).Extract()
 	switch err.(type) {
 	case nil:
 		p.log.Info("found existing node by name")
 		return ironicNode, nil
 	case gophercloud.ErrDefault404:
 		p.log.Info(
-			fmt.Sprintf("node with name %s doesn't exist", p.host.Name))
+			fmt.Sprintf("node with name %s doesn't exist", p.objectMeta.Name))
 	default:
 		return nil, errors.Wrap(err,
-			fmt.Sprintf("failed to find node by name %s", p.host.Name))
+			fmt.Sprintf("failed to find node by name %s", p.objectMeta.Name))
 	}
 
 	// Try to load the node by port address
@@ -409,7 +414,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 			nodes.CreateOpts{
 				Driver:              p.bmcAccess.Driver(),
 				BootInterface:       p.bmcAccess.BootInterface(),
-				Name:                p.host.Name,
+				Name:                p.objectMeta.Name,
 				DriverInfo:          driverInfo,
 				DeployInterface:     p.deployInterface(),
 				InspectInterface:    "inspector",
@@ -495,7 +500,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 				nodes.UpdateOperation{
 					Op:    nodes.ReplaceOp,
 					Path:  "/name",
-					Value: p.host.Name,
+					Value: p.objectMeta.Name,
 				},
 			}
 			ironicNode, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
@@ -773,7 +778,7 @@ func (p *ironicProvisioner) getImageUpdateOptsForNode(ironicNode *nodes.Node, im
 		nodes.UpdateOperation{
 			Op:    nodes.ReplaceOp,
 			Path:  "/instance_uuid",
-			Value: string(p.host.ObjectMeta.UID),
+			Value: string(p.objectMeta.UID),
 		},
 	)
 
@@ -1420,11 +1425,11 @@ func (p *ironicProvisioner) Provision(hostConf provisioner.HostConfigData) (resu
 
 		// Retrieve cloud-init meta_data.json with falback to default
 		metaData := map[string]interface{}{
-			"uuid":             string(p.host.ObjectMeta.UID),
-			"metal3-namespace": p.host.ObjectMeta.Namespace,
-			"metal3-name":      p.host.ObjectMeta.Name,
-			"local-hostname":   p.host.ObjectMeta.Name,
-			"local_hostname":   p.host.ObjectMeta.Name,
+			"uuid":             string(p.objectMeta.UID),
+			"metal3-namespace": p.objectMeta.Namespace,
+			"metal3-name":      p.objectMeta.Name,
+			"local-hostname":   p.objectMeta.Name,
+			"local_hostname":   p.objectMeta.Name,
 		}
 		metaDataRaw, err := hostConf.MetaData()
 		if err != nil {
@@ -1832,7 +1837,7 @@ func (p *ironicProvisioner) HasProvisioningCapacity() (result bool, err error) {
 	}
 
 	// If the current host is already under processing then let's skip the test
-	if _, ok := hosts[p.host.Name]; ok {
+	if _, ok := hosts[p.objectMeta.Name]; ok {
 		return true, nil
 	}
 
