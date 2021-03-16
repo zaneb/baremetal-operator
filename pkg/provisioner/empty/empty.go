@@ -54,7 +54,7 @@ func (p *emptyProvisioner) Prepare(unprepared bool) (result provisioner.Result, 
 // Provision writes the image from the host spec to the host. It may
 // be called multiple times, and should return true for its dirty flag
 // until the deprovisioning operation is completed.
-func (p *emptyProvisioner) Provision(hostConf provisioner.HostConfigData) (provisioner.Result, error) {
+func (p *emptyProvisioner) Provision(data provisioner.ProvisionData) (provisioner.Result, error) {
 	return provisioner.Result{}, nil
 }
 
