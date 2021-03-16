@@ -287,24 +287,32 @@ func (p *ironicProvisioner) listAllPorts(address string) ([]ports.Port, error) {
 
 }
 
+func (p *ironicProvisioner) getNode() (*nodes.Node, error) {
+	if p.status.ID == "" {
+		return nil, provisioner.NeedsRegistration
+	}
+
+	ironicNode, err := nodes.Get(p.client, p.status.ID).Extract()
+	switch err.(type) {
+	case nil:
+		p.log.Info("found existing node by ID")
+		return ironicNode, nil
+	case gophercloud.ErrDefault404:
+		// Look by ID failed, trying to lookup by hostname in case it was
+		// previously created
+		return nil, provisioner.NeedsRegistration
+	default:
+		return nil, errors.Wrap(err,
+			fmt.Sprintf("failed to find node by ID %s", p.status.ID))
+	}
+}
+
 // Look for an existing registration for the host in Ironic.
-func (p *ironicProvisioner) findExistingHost() (ironicNode *nodes.Node, err error) {
+func (p *ironicProvisioner) findExistingHost(bootMACAddress string) (ironicNode *nodes.Node, err error) {
 	// Try to load the node by UUID
-	if p.status.ID != "" {
-		// Look for the node to see if it exists (maybe Ironic was
-		// restarted)
-		ironicNode, err = nodes.Get(p.client, p.status.ID).Extract()
-		switch err.(type) {
-		case nil:
-			p.log.Info("found existing node by ID")
-			return ironicNode, nil
-		case gophercloud.ErrDefault404:
-			// Look by ID failed, trying to lookup by hostname in case it was
-			// previously created
-		default:
-			return nil, errors.Wrap(err,
-				fmt.Sprintf("failed to find node by ID %s", p.status.ID))
-		}
+	ironicNode, err = p.getNode()
+	if !errors.Is(err, provisioner.NeedsRegistration) {
+		return
 	}
 
 	// Try to load the node by name
@@ -323,11 +331,11 @@ func (p *ironicProvisioner) findExistingHost() (ironicNode *nodes.Node, err erro
 	}
 
 	// Try to load the node by port address
-	p.log.Info("looking for existing node by MAC", "MAC", p.host.Spec.BootMACAddress)
-	allPorts, err := p.listAllPorts(p.host.Spec.BootMACAddress)
+	p.log.Info("looking for existing node by MAC", "MAC", bootMACAddress)
+	allPorts, err := p.listAllPorts(bootMACAddress)
 
 	if err != nil {
-		p.log.Info("failed to find an existing port with address", "MAC", p.host.Spec.BootMACAddress)
+		p.log.Info("failed to find an existing port with address", "MAC", bootMACAddress)
 		return nil, nil
 	}
 
@@ -340,7 +348,7 @@ func (p *ironicProvisioner) findExistingHost() (ironicNode *nodes.Node, err erro
 
 			// If the node has a name, this means we didn't find it above.
 			if ironicNode.Name != "" {
-				return nil, NewMacAddressConflictError(p.host.Spec.BootMACAddress, ironicNode.Name)
+				return nil, NewMacAddressConflictError(bootMACAddress, ironicNode.Name)
 			}
 
 			return ironicNode, nil
@@ -352,11 +360,12 @@ func (p *ironicProvisioner) findExistingHost() (ironicNode *nodes.Node, err erro
 				fmt.Sprintf("port exists but failed to find linked node by ID %s", nodeUUID))
 		}
 	} else {
-		p.log.Info("port with address doesn't exist", "MAC", p.host.Spec.BootMACAddress)
+		p.log.Info("port with address doesn't exist", "MAC", bootMACAddress)
 	}
 
+	// Either the node was never created or the Ironic database has
+	// been dropped.
 	return nil, nil
-
 }
 
 // ValidateManagementAccess registers the host with the provisioning
@@ -370,7 +379,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 
 	p.log.Info("validating management access")
 
-	ironicNode, err = p.findExistingHost()
+	ironicNode, err = p.findExistingHost(p.host.Spec.BootMACAddress)
 	if err != nil {
 		switch err.(type) {
 		case macAddressConflictError:
@@ -645,13 +654,9 @@ func (p *ironicProvisioner) changeNodeProvisionState(ironicNode *nodes.Node, opt
 func (p *ironicProvisioner) InspectHardware(force bool) (result provisioner.Result, details *metal3v1alpha1.HardwareDetails, err error) {
 	p.log.Info("inspecting hardware", "status", p.host.OperationalStatus())
 
-	ironicNode, err := p.findExistingHost()
+	ironicNode, err := p.getNode()
 	if err != nil {
-		result, err = transientError(errors.Wrap(err, "failed to find existing host"))
-		return
-	}
-	if ironicNode == nil {
-		result, err = transientError(provisioner.NeedsRegistration)
+		result, err = transientError(err)
 		return
 	}
 
@@ -743,13 +748,8 @@ func (p *ironicProvisioner) InspectHardware(force bool) (result provisioner.Resu
 func (p *ironicProvisioner) UpdateHardwareState() (hwState provisioner.HardwareState, err error) {
 	p.log.Info("updating hardware state")
 
-	ironicNode, err := p.findExistingHost()
+	ironicNode, err := p.getNode()
 	if err != nil {
-		err = errors.Wrap(err, "failed to find existing host")
-		return
-	}
-	if ironicNode == nil {
-		err = provisioner.NeedsRegistration
 		return
 	}
 
@@ -1148,13 +1148,9 @@ func (p *ironicProvisioner) deployInterface() (result string) {
 
 // Adopt allows an externally-provisioned server to be adopted by Ironic.
 func (p *ironicProvisioner) Adopt(force bool) (result provisioner.Result, err error) {
-	var ironicNode *nodes.Node
-
-	if ironicNode, err = p.findExistingHost(); err != nil {
-		return transientError(errors.Wrap(err, "could not find host to adpot"))
-	}
-	if ironicNode == nil {
-		return transientError(provisioner.NeedsRegistration)
+	ironicNode, err := p.getNode()
+	if err != nil {
+		return transientError(err)
 	}
 
 	switch nodes.ProvisionState(ironicNode.ProvisionState) {
@@ -1273,14 +1269,9 @@ func (p *ironicProvisioner) startManualCleaning(ironicNode *nodes.Node) (success
 // Prepare remove existing configuration and set new configuration.
 // If `started` is true,  it means that we successfully executed `tryChangeNodeProvisionState`.
 func (p *ironicProvisioner) Prepare(unprepared bool) (result provisioner.Result, started bool, err error) {
-	var ironicNode *nodes.Node
-
-	if ironicNode, err = p.findExistingHost(); err != nil {
-		result, err = transientError(errors.Wrap(err, "could not find host to clean"))
-		return
-	}
-	if ironicNode == nil {
-		result, err = transientError(provisioner.NeedsRegistration)
+	ironicNode, err := p.getNode()
+	if err != nil {
+		result, err = transientError(err)
 		return
 	}
 
@@ -1343,13 +1334,9 @@ func (p *ironicProvisioner) Prepare(unprepared bool) (result provisioner.Result,
 // be called multiple times, and should return true for its dirty flag
 // until the deprovisioning operation is completed.
 func (p *ironicProvisioner) Provision(hostConf provisioner.HostConfigData) (result provisioner.Result, err error) {
-	var ironicNode *nodes.Node
-
-	if ironicNode, err = p.findExistingHost(); err != nil {
-		return transientError(errors.Wrap(err, "could not find host to receive image"))
-	}
-	if ironicNode == nil {
-		return transientError(provisioner.NeedsRegistration)
+	ironicNode, err := p.getNode()
+	if err != nil {
+		return transientError(err)
 	}
 
 	p.log.Info("provisioning image to host", "state", ironicNode.ProvisionState)
@@ -1509,12 +1496,9 @@ func (p *ironicProvisioner) setMaintenanceFlag(ironicNode *nodes.Node, value boo
 func (p *ironicProvisioner) Deprovision(force bool) (result provisioner.Result, err error) {
 	p.log.Info("deprovisioning")
 
-	ironicNode, err := p.findExistingHost()
+	ironicNode, err := p.getNode()
 	if err != nil {
-		return transientError(errors.Wrap(err, "failed to find existing host"))
-	}
-	if ironicNode == nil {
-		return transientError(provisioner.NeedsRegistration)
+		return transientError(err)
 	}
 
 	p.log.Info("deprovisioning host",
@@ -1603,14 +1587,13 @@ func (p *ironicProvisioner) Deprovision(force bool) (result provisioner.Result, 
 // called multiple times, and should return true for its dirty flag
 // until the deprovisioning operation is completed.
 func (p *ironicProvisioner) Delete() (result provisioner.Result, err error) {
-
-	ironicNode, err := p.findExistingHost()
+	ironicNode, err := p.getNode()
 	if err != nil {
-		return transientError(errors.Wrap(err, "failed to find existing host"))
-	}
-	if ironicNode == nil {
-		p.log.Info("no node found, already deleted")
-		return operationComplete()
+		if errors.Is(err, provisioner.NeedsRegistration) {
+			p.log.Info("no node found, already deleted")
+			return operationComplete()
+		}
+		return transientError(err)
 	}
 
 	p.log.Info("deleting host",
@@ -1708,9 +1691,9 @@ func (p *ironicProvisioner) changePower(ironicNode *nodes.Node, target nodes.Tar
 func (p *ironicProvisioner) PowerOn() (result provisioner.Result, err error) {
 	p.log.Info("ensuring host is powered on")
 
-	ironicNode, err := p.findExistingHost()
+	ironicNode, err := p.getNode()
 	if err != nil {
-		return transientError(errors.Wrap(err, "failed to find existing host"))
+		return transientError(err)
 	}
 
 	p.log.Info("checking current state",
@@ -1764,9 +1747,9 @@ func (p *ironicProvisioner) PowerOff(rebootMode metal3v1alpha1.RebootMode) (resu
 func (p *ironicProvisioner) hardPowerOff() (result provisioner.Result, err error) {
 	p.log.Info("ensuring host is powered off by \"hard power off\" command")
 
-	ironicNode, err := p.findExistingHost()
+	ironicNode, err := p.getNode()
 	if err != nil {
-		return transientError(errors.Wrap(err, "failed to find existing host"))
+		return transientError(err)
 	}
 
 	if ironicNode.PowerState != powerOff {
@@ -1793,9 +1776,9 @@ func (p *ironicProvisioner) hardPowerOff() (result provisioner.Result, err error
 func (p *ironicProvisioner) softPowerOff() (result provisioner.Result, err error) {
 	p.log.Info("ensuring host is powered off by \"soft power off\" command")
 
-	ironicNode, err := p.findExistingHost()
+	ironicNode, err := p.getNode()
 	if err != nil {
-		return transientError(errors.Wrap(err, "failed to find existing host"))
+		return transientError(err)
 	}
 
 	if ironicNode.PowerState != powerOff {
