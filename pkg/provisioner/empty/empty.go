@@ -29,7 +29,7 @@ func (p *emptyProvisioner) ValidateManagementAccess(data provisioner.ManagementA
 // details of devices discovered on the hardware. It may be called
 // multiple times, and should return true for its dirty flag until the
 // inspection is completed.
-func (p *emptyProvisioner) InspectHardware(force bool) (provisioner.Result, *metal3v1alpha1.HardwareDetails, error) {
+func (p *emptyProvisioner) InspectHardware(data provisioner.InspectData, force bool) (provisioner.Result, *metal3v1alpha1.HardwareDetails, error) {
 	return provisioner.Result{}, nil, nil
 }
 
