@@ -130,10 +130,6 @@ func init() {
 // Provisioner implements the provisioning.Provisioner interface
 // and uses Ironic to manage the host.
 type ironicProvisioner struct {
-	// the host to be managed by this provisioner
-	host metal3v1alpha1.BareMetalHost
-	// a shorter path to the provisioning status data structure
-	status *metal3v1alpha1.ProvisionStatus
 	// the object metadata of the BareMetalHost resource
 	objectMeta metav1.ObjectMeta
 	// the UUID of the node in Ironic
@@ -197,8 +193,6 @@ func newProvisionerWithIronicClients(host metal3v1alpha1.BareMetalHost, bmcCreds
 	// we need.
 	clientIronic.Microversion = "1.56"
 	p := &ironicProvisioner{
-		host:       host,
-		status:     &(host.Status.Provisioning),
 		objectMeta: host.ObjectMeta,
 		nodeID:     host.Status.Provisioning.ID,
 		bmcAccess:  bmcAccess,
