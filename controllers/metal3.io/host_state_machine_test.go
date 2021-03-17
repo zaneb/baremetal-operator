@@ -461,7 +461,7 @@ func (m *mockProvisioner) PowerOn() (result provisioner.Result, err error) {
 	return m.nextResult, err
 }
 
-func (m *mockProvisioner) PowerOff() (result provisioner.Result, err error) {
+func (m *mockProvisioner) PowerOff(rebootMode metal3v1alpha1.RebootMode) (result provisioner.Result, err error) {
 	return m.nextResult, err
 }
 
