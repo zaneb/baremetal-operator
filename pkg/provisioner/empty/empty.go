@@ -41,7 +41,8 @@ func (p *emptyProvisioner) UpdateHardwareState() (provisioner.HardwareState, err
 	return provisioner.HardwareState{}, nil
 }
 
-// Adopt allows an externally-provisioned server to be adopted.
+// Adopt notifies the provisioner that the state machine believes the host
+// to be currently provisioned, and that it should be managed as such.
 func (p *emptyProvisioner) Adopt(data provisioner.AdoptData, force bool) (provisioner.Result, error) {
 	return provisioner.Result{}, nil
 }
