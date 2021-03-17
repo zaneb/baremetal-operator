@@ -42,7 +42,7 @@ func (p *emptyProvisioner) UpdateHardwareState() (provisioner.HardwareState, err
 }
 
 // Adopt allows an externally-provisioned server to be adopted.
-func (p *emptyProvisioner) Adopt(force bool) (provisioner.Result, error) {
+func (p *emptyProvisioner) Adopt(data provisioner.AdoptData, force bool) (provisioner.Result, error) {
 	return provisioner.Result{}, nil
 }
 
