@@ -20,7 +20,6 @@ import (
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
-	"github.com/metal3-io/baremetal-operator/pkg/hardware"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/devicehints"
@@ -962,15 +961,6 @@ func (p *ironicProvisioner) getImageUpdateOptsForNode(ironicNode *nodes.Node, im
 }
 
 func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data provisioner.ProvisionData) (updates nodes.UpdateOpts, err error) {
-
-	hwProf, err := hardware.GetProfile(p.host.HardwareProfile())
-
-	if err != nil {
-		return updates, errors.Wrap(err,
-			fmt.Sprintf("Could not start provisioning with bad hardware profile %s",
-				p.host.HardwareProfile()))
-	}
-
 	imageOpts, err := p.getImageUpdateOptsForNode(ironicNode, p.host.Spec.Image, data.BootMode)
 	if err != nil {
 		return updates, errors.Wrap(err, "Could not get Image options for node")
@@ -1023,7 +1013,7 @@ func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data pr
 		nodes.UpdateOperation{
 			Op:    op,
 			Path:  "/properties/cpu_arch",
-			Value: hwProf.CPUArch,
+			Value: data.HardwareProfile.CPUArch,
 		},
 	)
 
@@ -1040,7 +1030,7 @@ func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data pr
 		nodes.UpdateOperation{
 			Op:    op,
 			Path:  "/properties/local_gb",
-			Value: hwProf.LocalGB,
+			Value: data.HardwareProfile.LocalGB,
 		},
 	)
 
