@@ -1214,11 +1214,11 @@ func (p *ironicProvisioner) ironicHasSameImage(ironicNode *nodes.Node) (sameImag
 	return sameImage
 }
 
-func (p *ironicProvisioner) buildManualCleaningSteps() (cleanSteps []nodes.CleanStep, err error) {
+func (p *ironicProvisioner) buildManualCleaningSteps(data provisioner.PrepareData) (cleanSteps []nodes.CleanStep, err error) {
 	// Build raid clean steps
 	if p.bmcAccess.RAIDInterface() != "" {
-		cleanSteps = append(cleanSteps, BuildRAIDCleanSteps(p.status.RAID)...)
-	} else if p.status.RAID != nil {
+		cleanSteps = append(cleanSteps, BuildRAIDCleanSteps(data.RAIDConfig)...)
+	} else if data.RAIDConfig != nil {
 		return nil, fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", p.bmcAccess.Driver())
 	}
 
@@ -1227,10 +1227,10 @@ func (p *ironicProvisioner) buildManualCleaningSteps() (cleanSteps []nodes.Clean
 	return
 }
 
-func (p *ironicProvisioner) startManualCleaning(ironicNode *nodes.Node) (success bool, result provisioner.Result, err error) {
+func (p *ironicProvisioner) startManualCleaning(ironicNode *nodes.Node, data provisioner.PrepareData) (success bool, result provisioner.Result, err error) {
 	if p.bmcAccess.RAIDInterface() != "" {
 		// Set raid configuration
-		err = setTargetRAIDCfg(p, ironicNode)
+		err = setTargetRAIDCfg(p, ironicNode, data)
 		if err != nil {
 			result, err = transientError(err)
 			return
@@ -1238,7 +1238,7 @@ func (p *ironicProvisioner) startManualCleaning(ironicNode *nodes.Node) (success
 	}
 
 	// Build manual clean steps
-	cleanSteps, err := p.buildManualCleaningSteps()
+	cleanSteps, err := p.buildManualCleaningSteps(data)
 	if err != nil {
 		result, err = operationFailed(err.Error())
 		return
@@ -1261,7 +1261,7 @@ func (p *ironicProvisioner) startManualCleaning(ironicNode *nodes.Node) (success
 
 // Prepare remove existing configuration and set new configuration.
 // If `started` is true,  it means that we successfully executed `tryChangeNodeProvisionState`.
-func (p *ironicProvisioner) Prepare(unprepared bool) (result provisioner.Result, started bool, err error) {
+func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared bool) (result provisioner.Result, started bool, err error) {
 	ironicNode, err := p.getNode()
 	if err != nil {
 		result, err = transientError(err)
@@ -1271,7 +1271,7 @@ func (p *ironicProvisioner) Prepare(unprepared bool) (result provisioner.Result,
 	switch nodes.ProvisionState(ironicNode.ProvisionState) {
 	case nodes.Available:
 		var cleanSteps []nodes.CleanStep
-		cleanSteps, err = p.buildManualCleaningSteps()
+		cleanSteps, err = p.buildManualCleaningSteps(data)
 		if err != nil {
 			result, err = operationFailed(err.Error())
 			return
@@ -1287,7 +1287,7 @@ func (p *ironicProvisioner) Prepare(unprepared bool) (result provisioner.Result,
 
 	case nodes.Manageable:
 		if unprepared {
-			started, result, err = p.startManualCleaning(ironicNode)
+			started, result, err = p.startManualCleaning(ironicNode, data)
 			return
 		}
 		// Manual clean finished

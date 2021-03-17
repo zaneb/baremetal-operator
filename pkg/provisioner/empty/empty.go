@@ -47,7 +47,7 @@ func (p *emptyProvisioner) Adopt(force bool) (provisioner.Result, error) {
 }
 
 // Prepare remove existing configuration and set new configuration
-func (p *emptyProvisioner) Prepare(unprepared bool) (result provisioner.Result, started bool, err error) {
+func (p *emptyProvisioner) Prepare(data provisioner.PrepareData, unprepared bool) (result provisioner.Result, started bool, err error) {
 	return provisioner.Result{}, false, nil
 }
 
