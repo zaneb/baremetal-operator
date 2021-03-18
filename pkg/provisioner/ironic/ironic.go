@@ -60,6 +60,19 @@ var bootModeCapabilities = map[metal3v1alpha1.BootMode]string{
 	metal3v1alpha1.Legacy: "boot_mode:bios",
 }
 
+type macAddressConflictError struct {
+	Address      string
+	ExistingNode string
+}
+
+func (e macAddressConflictError) Error() string {
+	return fmt.Sprintf("MAC address %s conflicts with existing node %s", e.Address, e.ExistingNode)
+}
+
+func NewMacAddressConflictError(address, node string) error {
+	return macAddressConflictError{Address: address, ExistingNode: node}
+}
+
 func init() {
 	// NOTE(dhellmann): Use Fprintf() to report errors instead of
 	// logging, because logging is not configured yet in init().
@@ -233,7 +246,9 @@ func (p *ironicProvisioner) validateNode(ironicNode *nodes.Node) (errorMessage s
 func (p *ironicProvisioner) listAllPorts(address string) ([]ports.Port, error) {
 	var allPorts []ports.Port
 
-	opts := ports.ListOpts{}
+	opts := ports.ListOpts{
+		Fields: []string{"node_uuid"},
+	}
 
 	if address != "" {
 		opts.Address = address
@@ -308,7 +323,7 @@ func (p *ironicProvisioner) findExistingHost() (ironicNode *nodes.Node, err erro
 
 			// If the node has a name, this means we didn't find it above.
 			if ironicNode.Name != "" {
-				return nil, errors.New(fmt.Sprint("node found by MAC but has a name: ", ironicNode.Name))
+				return nil, NewMacAddressConflictError(p.host.Spec.BootMACAddress, ironicNode.Name)
 			}
 
 			return ironicNode, nil
@@ -340,7 +355,12 @@ func (p *ironicProvisioner) ValidateManagementAccess(credentialsChanged, force b
 
 	ironicNode, err = p.findExistingHost()
 	if err != nil {
-		result, err = transientError(errors.Wrap(err, "failed to find existing host"))
+		switch err.(type) {
+		case macAddressConflictError:
+			result, err = operationFailed(err.Error())
+		default:
+			result, err = transientError(errors.Wrap(err, "failed to find existing host"))
+		}
 		return
 	}
 
