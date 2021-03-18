@@ -11,6 +11,7 @@ import (
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -91,16 +92,16 @@ func TestPowerOn(t *testing.T) {
 			defer inspector.Stop()
 
 			host := makeHost()
-			publisher := func(reason, message string) {}
+			host.Status.Provisioning.ID = nodeUUID
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {
 				t.Fatalf("could not create provisioner: %s", err)
 			}
 
-			prov.status.ID = nodeUUID
 			result, err := prov.PowerOn()
 
 			assert.Equal(t, tc.expectedDirty, result.Dirty)
@@ -203,16 +204,16 @@ func TestPowerOff(t *testing.T) {
 			defer inspector.Stop()
 
 			host := makeHost()
-			publisher := func(reason, message string) {}
+			host.Status.Provisioning.ID = nodeUUID
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {
 				t.Fatalf("could not create provisioner: %s", err)
 			}
 
-			prov.status.ID = nodeUUID
 			// We pass the RebootMode type here to define the reboot action
 			result, err := prov.PowerOff(tc.rebootMode)
 

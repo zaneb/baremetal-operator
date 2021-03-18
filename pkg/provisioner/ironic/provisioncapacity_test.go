@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -80,7 +81,8 @@ func TestHasProvisioningCapacity(t *testing.T) {
 
 			maxProvisioningHosts = tc.provisioningLimit
 
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {

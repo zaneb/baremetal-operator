@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -82,7 +83,7 @@ func TestUpdateHardwareState(t *testing.T) {
 			hostName: "worker-0",
 			ironic:   testserver.NewIronic(t).Ready().NodeError(nodeUUID, http.StatusGatewayTimeout),
 
-			expectedError: "failed to find existing host: failed to find node by ID 33ce8659-7400-4c68-9535-d10766f07a58: Expected HTTP response code \\[200\\].*",
+			expectedError: "failed to find node by ID 33ce8659-7400-4c68-9535-d10766f07a58: Expected HTTP response code \\[200\\].*",
 
 			expectUnreadablePower: true,
 		},
@@ -92,7 +93,7 @@ func TestUpdateHardwareState(t *testing.T) {
 			hostName: "worker-0",
 			ironic:   testserver.NewIronic(t).Ready().NoNode(nodeUUID).NodeError("myhost", http.StatusGatewayTimeout),
 
-			expectedError: "failed to find existing host: failed to find node by name worker-0: EOF",
+			expectedError: "Host not registered",
 
 			expectUnreadablePower: true,
 		},
@@ -130,7 +131,8 @@ func TestUpdateHardwareState(t *testing.T) {
 				publishedMsg = reason + " " + message
 			}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), publisher,
 				tc.ironic.Endpoint(), auth, tc.inspector.Endpoint(), auth,
 			)
 			if err != nil {

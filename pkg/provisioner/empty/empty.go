@@ -4,7 +4,6 @@ import (
 	logz "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/metal3-io/baremetal-operator/pkg/bmc"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 )
 
@@ -15,13 +14,13 @@ type emptyProvisioner struct {
 }
 
 // New returns a new Empty Provisioner
-func New(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
+func New(hostData provisioner.HostData, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
 	return &emptyProvisioner{}, nil
 }
 
 // ValidateManagementAccess tests the connection information for the
 // host to verify that the location and credentials work.
-func (p *emptyProvisioner) ValidateManagementAccess(credentialsChanged, force bool) (provisioner.Result, string, error) {
+func (p *emptyProvisioner) ValidateManagementAccess(data provisioner.ManagementAccessData, credentialsChanged, force bool) (provisioner.Result, string, error) {
 	return provisioner.Result{}, "", nil
 }
 
@@ -29,7 +28,7 @@ func (p *emptyProvisioner) ValidateManagementAccess(credentialsChanged, force bo
 // details of devices discovered on the hardware. It may be called
 // multiple times, and should return true for its dirty flag until the
 // inspection is completed.
-func (p *emptyProvisioner) InspectHardware(force bool) (provisioner.Result, *metal3v1alpha1.HardwareDetails, error) {
+func (p *emptyProvisioner) InspectHardware(data provisioner.InspectData, force bool) (provisioner.Result, *metal3v1alpha1.HardwareDetails, error) {
 	return provisioner.Result{}, nil, nil
 }
 
@@ -41,20 +40,21 @@ func (p *emptyProvisioner) UpdateHardwareState() (provisioner.HardwareState, err
 	return provisioner.HardwareState{}, nil
 }
 
-// Adopt allows an externally-provisioned server to be adopted.
-func (p *emptyProvisioner) Adopt(force bool) (provisioner.Result, error) {
+// Adopt notifies the provisioner that the state machine believes the host
+// to be currently provisioned, and that it should be managed as such.
+func (p *emptyProvisioner) Adopt(data provisioner.AdoptData, force bool) (provisioner.Result, error) {
 	return provisioner.Result{}, nil
 }
 
 // Prepare remove existing configuration and set new configuration
-func (p *emptyProvisioner) Prepare(unprepared bool) (result provisioner.Result, started bool, err error) {
+func (p *emptyProvisioner) Prepare(data provisioner.PrepareData, unprepared bool) (result provisioner.Result, started bool, err error) {
 	return provisioner.Result{}, false, nil
 }
 
 // Provision writes the image from the host spec to the host. It may
 // be called multiple times, and should return true for its dirty flag
 // until the deprovisioning operation is completed.
-func (p *emptyProvisioner) Provision(hostConf provisioner.HostConfigData) (provisioner.Result, error) {
+func (p *emptyProvisioner) Provision(data provisioner.ProvisionData) (provisioner.Result, error) {
 	return provisioner.Result{}, nil
 }
 

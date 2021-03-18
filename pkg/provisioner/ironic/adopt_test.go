@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -102,17 +103,18 @@ func TestAdopt(t *testing.T) {
 			defer inspector.Stop()
 
 			host := makeHost()
-			publisher := func(reason, message string) {}
+			host.Status.Provisioning.ID = nodeUUID
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {
 				t.Fatalf("could not create provisioner: %s", err)
 			}
 
-			prov.status.ID = nodeUUID
-			result, err := prov.Adopt(tc.force)
+			adoptData := provisioner.AdoptData{host.Status.Provisioning.State}
+			result, err := prov.Adopt(adoptData, tc.force)
 
 			assert.Equal(t, tc.expectedDirty, result.Dirty)
 			assert.Equal(t, time.Second*time.Duration(tc.expectedRequestAfter), result.RequeueAfter)

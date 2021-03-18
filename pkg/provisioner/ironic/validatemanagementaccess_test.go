@@ -8,8 +8,8 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
 	"github.com/stretchr/testify/assert"
 
-	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -19,7 +19,6 @@ func TestValidateManagementAccessNoMAC(t *testing.T) {
 	// requires one.
 	host := makeHost()
 	host.Spec.BMC.Address = "test-needs-mac://"
-	host.Spec.BootMACAddress = ""
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	ironic := testserver.NewIronic(t).Ready().NoNode(host.Name)
@@ -27,14 +26,15 @@ func TestValidateManagementAccessNoMAC(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nil,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, _, err := prov.ValidateManagementAccess(false, false)
+	result, _, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -45,7 +45,6 @@ func TestValidateManagementAccessMACOptional(t *testing.T) {
 	// Create a host without a bootMACAddress and with a BMC that
 	// does not require one.
 	host := makeHost()
-	host.Spec.BootMACAddress = ""
 
 	// Set up ironic server to return the node
 	ironic := testserver.NewIronic(t).Ready().
@@ -57,14 +56,15 @@ func TestValidateManagementAccessMACOptional(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nil,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, _, err := prov.ValidateManagementAccess(false, false)
+	result, _, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -75,7 +75,6 @@ func TestValidateManagementAccessCreateNodeNoImage(t *testing.T) {
 	// Create a host without a bootMACAddress and with a BMC that
 	// does not require one.
 	host := makeHost()
-	host.Spec.BootMACAddress = ""
 	host.Spec.Image = nil
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
@@ -90,14 +89,15 @@ func TestValidateManagementAccessCreateNodeNoImage(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, provID, err := prov.ValidateManagementAccess(false, false)
+	result, provID, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -126,14 +126,15 @@ func TestValidateManagementAccessCreateWithImage(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, provID, err := prov.ValidateManagementAccess(false, false)
+	result, provID, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{CurrentImage: host.Spec.Image.DeepCopy()}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -164,14 +165,15 @@ func TestValidateManagementAccessCreateWithLiveIso(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, provID, err := prov.ValidateManagementAccess(false, false)
+	result, provID, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{CurrentImage: host.Spec.Image.DeepCopy()}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -183,94 +185,10 @@ func TestValidateManagementAccessCreateWithLiveIso(t *testing.T) {
 	assert.Contains(t, updates, host.Spec.Image.URL)
 }
 
-func TestValidateManagementAccessCreateNodeImageSpecOrStatus(t *testing.T) {
-	cases := []struct {
-		name        string
-		specImage   *metal3v1alpha1.Image
-		statusImage metal3v1alpha1.Image
-		expected    string
-	}{
-		{
-			name: "image-from-spec",
-			specImage: &metal3v1alpha1.Image{
-				URL:      "image-from-spec",
-				Checksum: "image-checksum",
-			},
-			statusImage: metal3v1alpha1.Image{},
-			expected:    "image-from-spec",
-		},
-		{
-			name:      "image-from-status",
-			specImage: nil,
-			statusImage: metal3v1alpha1.Image{
-				URL:      "image-from-status",
-				Checksum: "image-checksum",
-			},
-			expected: "image-from-status",
-		},
-		{
-			name: "image-from-both",
-			specImage: &metal3v1alpha1.Image{
-				URL:      "image-from-spec",
-				Checksum: "image-checksum",
-			},
-			statusImage: metal3v1alpha1.Image{
-				URL:      "image-from-status",
-				Checksum: "image-checksum",
-			},
-			expected: "image-from-status",
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			host := makeHost()
-			host.Spec.BootMACAddress = ""
-			host.Spec.Image = tc.specImage
-			host.Status.Provisioning.ID = "" // so we don't lookup by uuid
-			host.Status.Provisioning.Image = tc.statusImage
-
-			var createdNode *nodes.Node
-
-			createCallback := func(node nodes.Node) {
-				createdNode = &node
-			}
-
-			ironic := testserver.NewIronic(t).Ready().CreateNodes(createCallback).NoNode(host.Name)
-			ironic.NodeUpdate(nodes.Node{UUID: "node-0"})
-			ironic.Start()
-			defer ironic.Stop()
-
-			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
-				ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
-			)
-			if err != nil {
-				t.Fatalf("could not create provisioner: %s", err)
-			}
-
-			result, provID, err := prov.ValidateManagementAccess(false, false)
-			if err != nil {
-				t.Fatalf("error from ValidateManagementAccess: %s", err)
-			}
-			assert.Equal(t, "", result.ErrorMessage)
-			assert.NotEqual(t, "", createdNode.UUID)
-			updates := ironic.GetLastNodeUpdateRequestFor(provID)
-			assert.NotEqual(t, 0, len(updates))
-			for _, u := range updates {
-				if u.Path == "/instance_info/image_source" {
-					assert.Equal(t, u.Value, tc.expected)
-				}
-			}
-		})
-	}
-}
-
 func TestValidateManagementAccessExistingNode(t *testing.T) {
 	// Create a host without a bootMACAddress and with a BMC that
 	// does not require one.
 	host := makeHost()
-	host.Spec.BootMACAddress = ""
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	createCallback := func(node nodes.Node) {
@@ -285,14 +203,15 @@ func TestValidateManagementAccessExistingNode(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, provID, err := prov.ValidateManagementAccess(false, false)
+	result, provID, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -332,7 +251,6 @@ func TestValidateManagementAccessExistingNodeContinue(t *testing.T) {
 			// Create a host without a bootMACAddress and with a BMC that
 			// does not require one.
 			host := makeHost()
-			host.Spec.BootMACAddress = ""
 			host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 			createCallback := func(node nodes.Node) {
@@ -348,14 +266,15 @@ func TestValidateManagementAccessExistingNodeContinue(t *testing.T) {
 			defer ironic.Stop()
 
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 			)
 			if err != nil {
 				t.Fatalf("could not create provisioner: %s", err)
 			}
 
-			result, _, err := prov.ValidateManagementAccess(false, false)
+			result, _, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{}, false, false)
 			if err != nil {
 				t.Fatalf("error from ValidateManagementAccess: %s", err)
 			}
@@ -376,7 +295,6 @@ func TestValidateManagementAccessExistingNodeWaiting(t *testing.T) {
 			// Create a host without a bootMACAddress and with a BMC that
 			// does not require one.
 			host := makeHost()
-			host.Spec.BootMACAddress = ""
 			host.Status.Provisioning.ID = "uuid"
 
 			createCallback := func(node nodes.Node) {
@@ -393,14 +311,15 @@ func TestValidateManagementAccessExistingNodeWaiting(t *testing.T) {
 			defer ironic.Stop()
 
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 			)
 			if err != nil {
 				t.Fatalf("could not create provisioner: %s", err)
 			}
 
-			result, _, err := prov.ValidateManagementAccess(false, false)
+			result, _, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{}, false, false)
 			if err != nil {
 				t.Fatalf("error from ValidateManagementAccess: %s", err)
 			}
@@ -414,7 +333,6 @@ func TestValidateManagementAccessNewCredentials(t *testing.T) {
 	// Create a host without a bootMACAddress and with a BMC that
 	// does not require one.
 	host := makeHost()
-	host.Spec.BootMACAddress = ""
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	ironic := testserver.NewIronic(t).
@@ -435,14 +353,15 @@ func TestValidateManagementAccessNewCredentials(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, provID, err := prov.ValidateManagementAccess(true, false)
+	result, provID, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{}, true, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -478,18 +397,18 @@ func TestValidateManagementAccessLinkExistingIronicNodeByMAC(t *testing.T) {
 	defer ironic.Stop()
 
 	host := makeHost()
-	host.Spec.BootMACAddress = "11:11:11:11:11:11"
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, provID, err := prov.ValidateManagementAccess(false, false)
+	result, provID, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{BootMACAddress: "11:11:11:11:11:11"}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
@@ -521,18 +440,18 @@ func TestValidateManagementAccessExistingPortWithWrongUUID(t *testing.T) {
 	defer ironic.Stop()
 
 	host := makeHost()
-	host.Spec.BootMACAddress = "11:11:11:11:11:11"
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	_, _, err = prov.ValidateManagementAccess(false, false)
+	_, _, err = prov.ValidateManagementAccess(provisioner.ManagementAccessData{BootMACAddress: "11:11:11:11:11:11"}, false, false)
 	assert.EqualError(t, err, "failed to find existing host: port exists but linked node doesn't random-wrong-id: Resource not found")
 }
 
@@ -563,18 +482,18 @@ func TestValidateManagementAccessExistingPortButHasName(t *testing.T) {
 	defer ironic.Stop()
 
 	host := makeHost()
-	host.Spec.BootMACAddress = "11:11:11:11:11:11"
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	res, _, err := prov.ValidateManagementAccess(false, false)
+	res, _, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{BootMACAddress: "11:11:11:11:11:11"}, false, false)
 	assert.Nil(t, err)
 	assert.Equal(t, res.ErrorMessage, "MAC address 11:11:11:11:11:11 conflicts with existing node wrong-name")
 }
@@ -600,20 +519,19 @@ func TestValidateManagementAccessAddTwoHostsWithSameMAC(t *testing.T) {
 	defer ironic.Stop()
 
 	host := makeHost()
-
-	// This value is differen than the port that actually exists
-	host.Spec.BootMACAddress = "22:22:22:22:22:22"
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
 		t.Fatalf("could not create provisioner: %s", err)
 	}
 
-	result, provID, err := prov.ValidateManagementAccess(false, false)
+	// MAC address value is different than the port that actually exists
+	result, provID, err := prov.ValidateManagementAccess(provisioner.ManagementAccessData{BootMACAddress: "22:22:22:22:22:22"}, false, false)
 	if err != nil {
 		t.Fatalf("error from ValidateManagementAccess: %s", err)
 	}
