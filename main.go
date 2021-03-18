@@ -32,6 +32,7 @@ import (
 	metal3iov1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	metal3iocontroller "github.com/metal3-io/baremetal-operator/controllers/metal3.io"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner/coreos"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/demo"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/fixture"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic"
@@ -103,6 +104,8 @@ func main() {
 
 	printVersion()
 
+	assistedInstaller := os.GetEnv("ASSISTED_INSTALLER_URL")
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                  scheme,
 		MetricsBindAddress:      metricsAddr,
@@ -129,6 +132,14 @@ func main() {
 	} else {
 		ironic.LogStartup()
 		provisionerFactory = ironic.New
+		if assistedInstaller != "" {
+			ctrl.Log.Info("using coreos provisioner")
+			coreosProv := coreos.CoreOSProvisionerFactory{
+				DelegateFactory: provisionerFactory,
+				ServiceURL:      assistedInstaller,
+			}
+			provisionerFactory = coreosProv.New
+		}
 	}
 
 	if err = (&metal3iocontroller.BareMetalHostReconciler{
