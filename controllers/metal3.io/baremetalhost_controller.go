@@ -42,6 +42,7 @@ import (
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
 	"github.com/metal3-io/baremetal-operator/pkg/hardware"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner/empty"
 	"github.com/metal3-io/baremetal-operator/pkg/utils"
 )
 
@@ -213,7 +214,13 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 		request:        request,
 		bmcCredsSecret: bmcCredsSecret,
 	}
-	prov, err := r.ProvisionerFactory(*host, *bmcCreds, info.publishEvent)
+
+	factory := r.ProvisionerFactory
+	if host.Spec.ExternallyProvisioned && !host.HasBMCDetails() {
+		factory = empty.New
+	}
+
+	prov, err := factory(*host.DeepCopy(), *bmcCreds, info.publishEvent)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "failed to create provisioner")
 	}
