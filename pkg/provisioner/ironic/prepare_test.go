@@ -139,9 +139,9 @@ func TestPrepare(t *testing.T) {
 				}
 			}
 
-			publisher := func(reason, message string) {}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {

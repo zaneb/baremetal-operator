@@ -11,6 +11,7 @@ import (
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -92,9 +93,9 @@ func TestPowerOn(t *testing.T) {
 
 			host := makeHost()
 			host.Status.Provisioning.ID = nodeUUID
-			publisher := func(reason, message string) {}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {
@@ -204,9 +205,9 @@ func TestPowerOff(t *testing.T) {
 
 			host := makeHost()
 			host.Status.Provisioning.ID = nodeUUID
-			publisher := func(reason, message string) {}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {

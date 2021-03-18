@@ -18,12 +18,11 @@ import (
 )
 
 func TestGetUpdateOptsForNodeWithRootHints(t *testing.T) {
-
-	eventPublisher := func(reason, message string) {}
 	auth := clients.AuthConfig{Type: clients.NoAuth}
 
 	host := makeHost()
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, eventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		"https://ironic.test", auth, "https://ironic.test", auth,
 	)
 	if err != nil {
@@ -118,10 +117,10 @@ func TestGetUpdateOptsForNodeVirtual(t *testing.T) {
 		},
 	}
 
-	eventPublisher := func(reason, message string) {}
 	auth := clients.AuthConfig{Type: clients.NoAuth}
 
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, eventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		"https://ironic.test", auth, "https://ironic.test", auth,
 	)
 	if err != nil {
@@ -228,10 +227,10 @@ func TestGetUpdateOptsForNodeDell(t *testing.T) {
 		},
 	}
 
-	eventPublisher := func(reason, message string) {}
 	auth := clients.AuthConfig{Type: clients.NoAuth}
 
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, eventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		"https://ironic.test", auth, "https://ironic.test", auth,
 	)
 	if err != nil {
@@ -304,11 +303,11 @@ func TestGetUpdateOptsForNodeDell(t *testing.T) {
 }
 
 func TestGetUpdateOptsForNodeLiveIso(t *testing.T) {
-	eventPublisher := func(reason, message string) {}
 	auth := clients.AuthConfig{Type: clients.NoAuth}
 
 	host := makeHostLiveIso()
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, eventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		"https://ironic.test", auth, "https://ironic.test", auth,
 	)
 	if err != nil {
@@ -370,11 +369,11 @@ func TestGetUpdateOptsForNodeLiveIso(t *testing.T) {
 }
 
 func TestGetUpdateOptsForNodeImageToLiveIso(t *testing.T) {
-	eventPublisher := func(reason, message string) {}
 	auth := clients.AuthConfig{Type: clients.NoAuth}
 
 	host := makeHostLiveIso()
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, eventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		"https://ironic.test", auth, "https://ironic.test", auth,
 	)
 	if err != nil {
@@ -451,14 +450,14 @@ func TestGetUpdateOptsForNodeImageToLiveIso(t *testing.T) {
 }
 
 func TestGetUpdateOptsForNodeLiveIsoToImage(t *testing.T) {
-	eventPublisher := func(reason, message string) {}
 	auth := clients.AuthConfig{Type: clients.NoAuth}
 
 	host := makeHost()
 	host.Spec.Image.URL = "newimage"
 	host.Spec.Image.Checksum = "thechecksum"
 	host.Spec.Image.ChecksumType = metal3v1alpha1.MD5
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, eventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		"https://ironic.test", auth, "https://ironic.test", auth,
 	)
 	if err != nil {
@@ -562,10 +561,10 @@ func TestGetUpdateOptsForNodeSecureBoot(t *testing.T) {
 		},
 	}
 
-	eventPublisher := func(reason, message string) {}
 	auth := clients.AuthConfig{Type: clients.NoAuth}
 
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, eventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		"https://ironic.test", auth, "https://ironic.test", auth,
 	)
 	if err != nil {

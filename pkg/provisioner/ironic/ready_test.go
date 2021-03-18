@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -88,7 +89,8 @@ func TestProvisionerIsReady(t *testing.T) {
 
 			ironicEndpoint := tc.ironic.Endpoint()
 			inspectorEndpoint := tc.inspector.Endpoint()
-			prov, err := newProvisionerWithSettings(makeHost(), bmc.Credentials{}, nil,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(makeHost(), bmc.Credentials{}), nullEventPublisher,
 				ironicEndpoint, auth, inspectorEndpoint, auth,
 			)
 			if err != nil {

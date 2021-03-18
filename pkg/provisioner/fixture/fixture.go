@@ -71,11 +71,11 @@ type Fixture struct {
 }
 
 // New returns a new Ironic FixtureProvisioner
-func (f *Fixture) New(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
+func (f *Fixture) New(hostData provisioner.HostData, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
 	p := &fixtureProvisioner{
-		provID:    host.Status.Provisioning.ID,
-		bmcCreds:  bmcCreds,
-		log:       log.WithValues("host", host.Name),
+		provID:    hostData.ProvisionerID,
+		bmcCreds:  hostData.BMCCredentials,
+		log:       log.WithValues("host", hostData.ObjectMeta.Name),
 		publisher: publisher,
 		state:     f,
 	}

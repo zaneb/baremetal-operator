@@ -66,12 +66,12 @@ type demoProvisioner struct {
 }
 
 // New returns a new Ironic Provisioner
-func New(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
+func New(hostData provisioner.HostData, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
 	p := &demoProvisioner{
-		objectMeta: host.ObjectMeta,
-		provID:     host.Status.Provisioning.ID,
-		bmcCreds:   bmcCreds,
-		log:        log.WithValues("host", host.Name),
+		objectMeta: hostData.ObjectMeta,
+		provID:     hostData.ProvisionerID,
+		bmcCreds:   hostData.BMCCredentials,
+		log:        log.WithValues("host", hostData.ObjectMeta.Name),
 		publisher:  publisher,
 	}
 	return p, nil

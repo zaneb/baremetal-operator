@@ -163,7 +163,7 @@ func LogStartup() {
 
 // A private function to construct an ironicProvisioner (rather than a
 // Provisioner interface) in a consistent way for tests.
-func newProvisionerWithSettings(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher, ironicURL string, ironicAuthSettings clients.AuthConfig, inspectorURL string, inspectorAuthSettings clients.AuthConfig) (*ironicProvisioner, error) {
+func newProvisionerWithSettings(hostData provisioner.HostData, publisher provisioner.EventPublisher, ironicURL string, ironicAuthSettings clients.AuthConfig, inspectorURL string, inspectorAuthSettings clients.AuthConfig) (*ironicProvisioner, error) {
 	tlsConf := clients.TLSConfig{
 		TrustedCAFile:      ironicTrustedCAFile,
 		InsecureSkipVerify: ironicInsecure,
@@ -178,13 +178,13 @@ func newProvisionerWithSettings(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.
 		return nil, err
 	}
 
-	return newProvisionerWithIronicClients(host, bmcCreds, publisher,
+	return newProvisionerWithIronicClients(hostData, publisher,
 		clientIronic, clientInspector)
 }
 
-func newProvisionerWithIronicClients(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher, clientIronic *gophercloud.ServiceClient, clientInspector *gophercloud.ServiceClient) (*ironicProvisioner, error) {
+func newProvisionerWithIronicClients(hostData provisioner.HostData, publisher provisioner.EventPublisher, clientIronic *gophercloud.ServiceClient, clientInspector *gophercloud.ServiceClient) (*ironicProvisioner, error) {
 
-	bmcAccess, err := bmc.NewAccessDetails(host.Spec.BMC.Address, host.Spec.BMC.DisableCertificateVerification)
+	bmcAccess, err := bmc.NewAccessDetails(hostData.BMCAddress, hostData.DisableCertificateVerification)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse BMC address information")
 	}
@@ -193,13 +193,13 @@ func newProvisionerWithIronicClients(host metal3v1alpha1.BareMetalHost, bmcCreds
 	// we need.
 	clientIronic.Microversion = "1.56"
 	p := &ironicProvisioner{
-		objectMeta: host.ObjectMeta,
-		nodeID:     host.Status.Provisioning.ID,
+		objectMeta: hostData.ObjectMeta,
+		nodeID:     hostData.ProvisionerID,
 		bmcAccess:  bmcAccess,
-		bmcCreds:   bmcCreds,
+		bmcCreds:   hostData.BMCCredentials,
 		client:     clientIronic,
 		inspector:  clientInspector,
-		log:        log.WithValues("host", host.Name),
+		log:        log.WithValues("host", hostData.ObjectMeta.Name),
 		publisher:  publisher,
 	}
 
@@ -208,7 +208,7 @@ func newProvisionerWithIronicClients(host metal3v1alpha1.BareMetalHost, bmcCreds
 
 // New returns a new Ironic Provisioner using the global configuration
 // for finding the Ironic services.
-func New(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
+func New(hostData provisioner.HostData, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
 	var err error
 	if clientIronicSingleton == nil || clientInspectorSingleton == nil {
 		tlsConf := clients.TLSConfig{
@@ -227,7 +227,7 @@ func New(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher 
 			return nil, err
 		}
 	}
-	return newProvisionerWithIronicClients(host, bmcCreds, publisher,
+	return newProvisionerWithIronicClients(hostData, publisher,
 		clientIronicSingleton, clientInspectorSingleton)
 }
 

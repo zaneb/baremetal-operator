@@ -100,9 +100,9 @@ func TestProvision(t *testing.T) {
 
 			host := makeHost()
 			host.Status.Provisioning.ID = nodeUUID
-			publisher := func(reason, message string) {}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {
@@ -237,9 +237,9 @@ func TestDeprovision(t *testing.T) {
 
 			host := makeHost()
 			host.Status.Provisioning.ID = nodeUUID
-			publisher := func(reason, message string) {}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {
@@ -378,9 +378,9 @@ func TestIronicHasSameImage(t *testing.T) {
 				host.Spec.Image.ChecksumType = tc.hostChecksumType
 			}
 			host.Status.Provisioning.ID = nodeUUID
-			publisher := func(reason, message string) {}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				ironic.Endpoint(), auth, inspector.Endpoint(), auth,
 			)
 			if err != nil {

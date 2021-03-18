@@ -4,7 +4,6 @@ import (
 	logz "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	metal3v1alpha1 "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	"github.com/metal3-io/baremetal-operator/pkg/bmc"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 )
 
@@ -15,7 +14,7 @@ type emptyProvisioner struct {
 }
 
 // New returns a new Empty Provisioner
-func New(host metal3v1alpha1.BareMetalHost, bmcCreds bmc.Credentials, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
+func New(hostData provisioner.HostData, publisher provisioner.EventPublisher) (provisioner.Provisioner, error) {
 	return &emptyProvisioner{}, nil
 }
 

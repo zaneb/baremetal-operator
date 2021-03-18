@@ -6,6 +6,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 
 	"github.com/metal3-io/baremetal-operator/pkg/bmc"
+	"github.com/metal3-io/baremetal-operator/pkg/provisioner"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/clients"
 	"github.com/metal3-io/baremetal-operator/pkg/provisioner/ironic/testserver"
 )
@@ -63,7 +64,8 @@ func TestFindExistingHost(t *testing.T) {
 			host.ObjectMeta.Name = tc.hostName
 			host.Status.Provisioning.ID = tc.provisioningID
 
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nil,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				tc.ironic.Endpoint(), auth, "https://inspector.test/", auth,
 			)
 			if err != nil {

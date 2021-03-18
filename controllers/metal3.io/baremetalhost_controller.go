@@ -220,7 +220,7 @@ func (r *BareMetalHostReconciler) Reconcile(ctx context.Context, request ctrl.Re
 		factory = empty.New
 	}
 
-	prov, err := factory(*host.DeepCopy(), *bmcCreds, info.publishEvent)
+	prov, err := factory(provisioner.BuildHostData(*host, *bmcCreds), info.publishEvent)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "failed to create provisioner")
 	}

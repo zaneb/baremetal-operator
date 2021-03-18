@@ -173,7 +173,8 @@ func TestInspectHardware(t *testing.T) {
 				publishedMsg = reason + " " + message
 			}
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, publisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), publisher,
 				tc.ironic.Endpoint(), auth, tc.inspector.Endpoint(), auth,
 			)
 			if err != nil {

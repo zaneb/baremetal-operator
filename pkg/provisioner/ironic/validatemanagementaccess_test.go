@@ -26,7 +26,8 @@ func TestValidateManagementAccessNoMAC(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nil,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -55,7 +56,8 @@ func TestValidateManagementAccessMACOptional(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nil,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -87,7 +89,8 @@ func TestValidateManagementAccessCreateNodeNoImage(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -123,7 +126,8 @@ func TestValidateManagementAccessCreateWithImage(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -161,7 +165,8 @@ func TestValidateManagementAccessCreateWithLiveIso(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -198,7 +203,8 @@ func TestValidateManagementAccessExistingNode(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -260,7 +266,8 @@ func TestValidateManagementAccessExistingNodeContinue(t *testing.T) {
 			defer ironic.Stop()
 
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 			)
 			if err != nil {
@@ -304,7 +311,8 @@ func TestValidateManagementAccessExistingNodeWaiting(t *testing.T) {
 			defer ironic.Stop()
 
 			auth := clients.AuthConfig{Type: clients.NoAuth}
-			prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+			prov, err := newProvisionerWithSettings(
+				provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 				ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 			)
 			if err != nil {
@@ -345,7 +353,8 @@ func TestValidateManagementAccessNewCredentials(t *testing.T) {
 	defer ironic.Stop()
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -391,7 +400,8 @@ func TestValidateManagementAccessLinkExistingIronicNodeByMAC(t *testing.T) {
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -433,7 +443,8 @@ func TestValidateManagementAccessExistingPortWithWrongUUID(t *testing.T) {
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -474,7 +485,8 @@ func TestValidateManagementAccessExistingPortButHasName(t *testing.T) {
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
@@ -510,7 +522,8 @@ func TestValidateManagementAccessAddTwoHostsWithSameMAC(t *testing.T) {
 	host.Status.Provisioning.ID = "" // so we don't lookup by uuid
 
 	auth := clients.AuthConfig{Type: clients.NoAuth}
-	prov, err := newProvisionerWithSettings(host, bmc.Credentials{}, nullEventPublisher,
+	prov, err := newProvisionerWithSettings(
+		provisioner.BuildHostData(host, bmc.Credentials{}), nullEventPublisher,
 		ironic.Endpoint(), auth, testserver.NewInspector(t).Endpoint(), auth,
 	)
 	if err != nil {
