@@ -37,6 +37,12 @@ type HostConfigData interface {
 // Provisioner holds the state information for talking to the
 // provisioning backend.
 type Provisioner interface {
+
+	// CanManage returns whether the provisioner can manage the host given
+	// the available data. Until it returns true, a newly created host will
+	// remain unmanaged.
+	CanManage() (bool, error)
+
 	// ValidateManagementAccess tests the connection information for
 	// the host to verify that the location and credentials work. The
 	// boolean argument tells the provisioner whether the current set

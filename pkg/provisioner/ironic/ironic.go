@@ -359,6 +359,14 @@ func (p *ironicProvisioner) findExistingHost() (ironicNode *nodes.Node, err erro
 
 }
 
+// CanManage returns whether the provisioner can manage the host given
+// the available data. Until it returns true, a newly created host will
+// remain unmanaged.
+func (p *ironicProvisioner) CanManage() (bool, error) {
+	_, err := p.bmcAccess()
+	return err == nil, nil
+}
+
 // ValidateManagementAccess registers the host with the provisioning
 // system and tests the connection information for the host to verify
 // that the location and credentials work.

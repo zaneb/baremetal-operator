@@ -504,7 +504,11 @@ func (r *BareMetalHostReconciler) actionDeleting(prov provisioner.Provisioner, i
 }
 
 func (r *BareMetalHostReconciler) actionUnmanaged(prov provisioner.Provisioner, info *reconcileInfo) actionResult {
-	if info.host.HasBMCDetails() {
+	done, err := prov.CanManage()
+	if err != nil {
+		return actionError{err}
+	}
+	if done {
 		return actionComplete{}
 	}
 	return actionContinue{unmanagedRetryDelay}

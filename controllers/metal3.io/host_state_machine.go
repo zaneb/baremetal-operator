@@ -267,7 +267,11 @@ func (hsm *hostStateMachine) ensureRegistered(info *reconcileInfo) (result actio
 
 func (hsm *hostStateMachine) handleNone(info *reconcileInfo) actionResult {
 	// No state is set, so immediately move to either Registering or Unmanaged
-	if hsm.Host.HasBMCDetails() {
+	canManage, err := hsm.Provisioner.CanManage()
+	if err != nil {
+		return actionError{err}
+	}
+	if canManage {
 		hsm.NextState = metal3v1alpha1.StateRegistering
 	} else {
 		info.publishEvent("Discovered", "Discovered host with no BMC details")

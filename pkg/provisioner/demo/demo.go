@@ -76,6 +76,13 @@ func (m *demoProvisioner) HasProvisioningCapacity() (result bool, err error) {
 	return true, nil
 }
 
+// CanManage returns whether the provisioner can manage the host given
+// the available data. Until it returns true, a newly created host will
+// remain unmanaged.
+func (p *demoProvisioner) CanManage() (bool, error) {
+	return true, nil
+}
+
 // ValidateManagementAccess tests the connection information for the
 // host to verify that the location and credentials work.
 func (p *demoProvisioner) ValidateManagementAccess(credentialsChanged, force bool) (result provisioner.Result, provID string, err error) {

@@ -614,6 +614,10 @@ func (m *mockProvisioner) setNextError(methodName, msg string) {
 	}
 }
 
+func (p *mockProvisioner) CanManage() (bool, error) {
+	return true, nil
+}
+
 func (m *mockProvisioner) ValidateManagementAccess(credentialsChanged, force bool) (result provisioner.Result, provID string, err error) {
 	return m.getNextResultByMethod("ValidateManagementAccess"), "", err
 }
