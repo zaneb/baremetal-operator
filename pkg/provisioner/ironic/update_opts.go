@@ -129,6 +129,13 @@ func sectionUpdateOpts(currentData map[string]interface{}, settings optionsData,
 	return updates
 }
 
+func topLevelUpdateOpt(name string, currentValue, desiredValue interface{}, log logr.Logger) nodes.UpdateOpts {
+	currentData := map[string]interface{}{name: currentValue}
+	desiredData := optionsData{name: desiredValue}
+
+	return sectionUpdateOpts(currentData, desiredData, "", log)
+}
+
 func propertiesUpdateOpts(node *nodes.Node, settings optionsData, log logr.Logger) nodes.UpdateOpts {
 	return sectionUpdateOpts(node.Properties, settings, "/properties", log)
 }
