@@ -515,11 +515,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(data provisioner.Management
 	}
 	updater := updateNode(ironicNode, p.debugLog)
 	if data.CurrentImage != nil {
-		optsErr := p.getImageUpdateOptsForNode(updater, data.CurrentImage, data.BootMode)
-		if optsErr != nil {
-			result, err = transientError(errors.Wrap(optsErr, "Could not get Image options for node"))
-			return
-		}
+		p.getImageUpdateOptsForNode(updater, data.CurrentImage, data.BootMode)
 	}
 	updater.Root().
 		SetOpt("automated_clean",
@@ -761,11 +757,11 @@ func (p *ironicProvisioner) setLiveIsoUpdateOptsForNode(updater *nodeUpdater, im
 	return nil
 }
 
-func (p *ironicProvisioner) setDirectDeployUpdateOptsForNode(updater *nodeUpdater, imageData *metal3v1alpha1.Image) error {
+func (p *ironicProvisioner) setDirectDeployUpdateOptsForNode(updater *nodeUpdater, imageData *metal3v1alpha1.Image) {
 	checksum, checksumType, ok := imageData.GetChecksum()
 	if !ok {
 		p.log.Info("image/checksum not found for host")
-		return nil
+		return
 	}
 
 	// FIXME: For older versions of ironic that do not have
@@ -795,10 +791,10 @@ func (p *ironicProvisioner) setDirectDeployUpdateOptsForNode(updater *nodeUpdate
 	} else {
 		ii.ClearOpt("image_disk_format")
 	}
-	return nil
+	return
 }
 
-func (p *ironicProvisioner) getImageUpdateOptsForNode(updater *nodeUpdater, imageData *metal3v1alpha1.Image, bootMode metal3v1alpha1.BootMode) error {
+func (p *ironicProvisioner) getImageUpdateOptsForNode(updater *nodeUpdater, imageData *metal3v1alpha1.Image, bootMode metal3v1alpha1.BootMode) {
 	// instance_uuid
 	updater.Root().SetOpt("instance_uuid", string(p.objectMeta.UID))
 
@@ -816,20 +812,18 @@ func (p *ironicProvisioner) getImageUpdateOptsForNode(updater *nodeUpdater, imag
 
 	updater.InstanceInfo().SetOpt("capabilities", capabilitiesII)
 
-	// Set live-iso format options
 	if imageData.DiskFormat != nil && *imageData.DiskFormat == "live-iso" {
-		return p.setLiveIsoUpdateOptsForNode(updater, imageData)
+		// Set live-iso format options
+		p.setLiveIsoUpdateOptsForNode(updater, imageData)
+	} else {
+		// Set deploy_interface direct options when not booting a live-iso
+		p.setDirectDeployUpdateOptsForNode(updater, imageData)
 	}
-
-	// Set deploy_interface direct options when not booting a live-iso
-	return p.setDirectDeployUpdateOptsForNode(updater, imageData)
 }
 
 func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data provisioner.ProvisionData) (nodes.UpdateOpts, error) {
 	updater := updateNode(ironicNode, p.debugLog)
-	if err := p.getImageUpdateOptsForNode(updater, &data.Image, data.BootMode); err != nil {
-		return nil, errors.Wrap(err, "Could not get Image options for node")
-	}
+	p.getImageUpdateOptsForNode(updater, &data.Image, data.BootMode)
 
 	updater.Properties().
 		SetOpt("root_device", devicehints.MakeHintMap(data.RootDeviceHints)).
