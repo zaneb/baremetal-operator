@@ -81,69 +81,6 @@ func deref(v interface{}) interface{} {
 	}
 }
 
-func getUpdateOperation(name string, currentData map[string]interface{}, desiredValue interface{}, path string, log logr.Logger) *nodes.UpdateOperation {
-	current, present := currentData[name]
-
-	desiredValue = deref(desiredValue)
-	if desiredValue != nil {
-		if !(present && optionValueEqual(deref(current), desiredValue)) {
-			if log != nil {
-				if present {
-					log.Info("updating option data", "option", name, "value", desiredValue)
-				} else {
-					log.Info("adding option data", "option", name, "value", desiredValue)
-				}
-			}
-			return &nodes.UpdateOperation{
-				Op:    nodes.AddOp, // Add also does replace
-				Path:  path,
-				Value: desiredValue,
-			}
-		}
-	} else {
-		if present {
-			if log != nil {
-				log.Info("removing option data", "option", name)
-			}
-			return &nodes.UpdateOperation{
-				Op:   nodes.RemoveOp,
-				Path: path,
-			}
-		}
-	}
-	return nil
-}
-
-func sectionUpdateOpts(currentData map[string]interface{}, settings optionsData, basepath string, log logr.Logger) nodes.UpdateOpts {
-	var updates nodes.UpdateOpts
-	if log != nil && basepath != "" {
-		log = log.WithValues("section", basepath[1:])
-	}
-	for name, desiredValue := range settings {
-		path := fmt.Sprintf("%s/%s", basepath, name)
-		updateOp := getUpdateOperation(name, currentData, desiredValue, path, log)
-		if updateOp != nil {
-			updates = append(updates, *updateOp)
-		}
-	}
-	return updates
-}
-
-func topLevelUpdateOpt(name string, currentValue, desiredValue interface{}, log logr.Logger) nodes.UpdateOpts {
-	currentData := map[string]interface{}{name: currentValue}
-	desiredData := optionsData{name: desiredValue}
-
-	return sectionUpdateOpts(currentData, desiredData, "", log)
-}
-
-func propertiesUpdateOpts(node *nodes.Node, settings optionsData, log logr.Logger) nodes.UpdateOpts {
-	return sectionUpdateOpts(node.Properties, settings, "/properties", log)
-}
-
-func instanceInfoUpdateOpts(node *nodes.Node, settings optionsData, log logr.Logger) nodes.UpdateOpts {
-	return sectionUpdateOpts(node.InstanceInfo, settings, "/instance_info", log)
-}
-
 type nodeUpdater struct {
 	node    *nodes.Node
 	log     logr.Logger
