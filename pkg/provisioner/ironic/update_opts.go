@@ -145,87 +145,147 @@ func instanceInfoUpdateOpts(node *nodes.Node, settings optionsData, log logr.Log
 }
 
 type nodeUpdater struct {
-	Updates nodes.UpdateOpts
+	node    *nodes.Node
+	log     logr.Logger
+	updates nodes.UpdateOpts
+}
+
+type nodeUpdaterInterface interface {
+	Root() nodeSectionUpdater
+	InstanceInfo() nodeSectionUpdater
+	Properties() nodeSectionUpdater
+
+	Updates() nodes.UpdateOpts
+}
+
+type nodeSectionUpdater interface {
+	nodeUpdaterInterface
+	SetOpt(name string, desiredValue interface{}) nodeSectionUpdater
+	ClearOpt(name string) nodeSectionUpdater
+}
+
+func updateNode(node *nodes.Node, log logr.Logger) *nodeUpdater {
+	return &nodeUpdater{
+		node: node,
+		log:  log,
+	}
+}
+
+func (nu *nodeUpdater) Updates() nodes.UpdateOpts {
+	return nu.updates
+}
+
+func (nu *nodeUpdater) section(sectionName string, data map[string]interface{}) nodeSectionUpdater {
+	logger := nu.log
+	section := sectionName
+	if sectionName != "" {
+		if logger != nil {
+			logger = logger.WithValues("section", sectionName)
+		}
+		section = "/" + sectionName
+	}
+	return &sectionUpdater{
+		nodeUpdater: nu,
+		data:        data,
+		section:     section,
+		log:         logger,
+	}
+}
+
+func (nu *nodeUpdater) Root() nodeSectionUpdater {
+	return &rootUpdater{nu}
+}
+
+func (nu *nodeUpdater) InstanceInfo() nodeSectionUpdater {
+	return nu.section("instance_info", nu.node.InstanceInfo)
+}
+
+func (nu *nodeUpdater) Properties() nodeSectionUpdater {
+	return nu.section("properties", nu.node.Properties)
+}
+
+type rootUpdater struct {
+	*nodeUpdater
+}
+
+func (ru *rootUpdater) optValue(name string) interface{} {
+	nodeType := reflect.TypeOf(*ru.node)
+	numFields := nodeType.NumField()
+	for i := 0; i < numFields; i++ {
+		f := nodeType.Field(i)
+		if n, ok := f.Tag.Lookup("json"); ok && n == name {
+			value := reflect.ValueOf(*ru.node).FieldByName(f.Name)
+			if !value.IsValid() {
+				return nil
+			}
+			return value.Interface()
+		}
+	}
+	return nil
+}
+
+func (ru *rootUpdater) sectionWithOpt(name string) nodeSectionUpdater {
+	currentData := map[string]interface{}{}
+	if v := ru.optValue(name); v != nil {
+		currentData[name] = v
+	}
+	return ru.section("", currentData)
+}
+
+func (ru *rootUpdater) SetOpt(name string, desiredValue interface{}) nodeSectionUpdater {
+	ru.sectionWithOpt(name).SetOpt(name, desiredValue)
+	return ru
+}
+
+func (ru *rootUpdater) ClearOpt(name string) nodeSectionUpdater {
+	ru.sectionWithOpt(name).ClearOpt(name)
+	return ru
+}
+
+type sectionUpdater struct {
+	*nodeUpdater
+	data    map[string]interface{}
+	section string
 	log     logr.Logger
 }
 
-func buildUpdateOpts(log logr.Logger) *nodeUpdater {
-	return &nodeUpdater{
-		log: log,
-	}
+func (su *sectionUpdater) path(option string) string {
+	return fmt.Sprintf("%s/%s", su.section, option)
 }
 
-func (nu *nodeUpdater) logger(basepath, option string) logr.Logger {
-	if nu.log == nil {
-		return nil
-	}
-	log := nu.log.WithValues("option", option)
-	if basepath != "" {
-		log = log.WithValues("section", basepath[1:])
-	}
-	return log
-}
-
-func (nu *nodeUpdater) path(basepath, option string) string {
-	return fmt.Sprintf("%s/%s", basepath, option)
-}
-
-func (nu *nodeUpdater) setSectionOpt(name string, desiredValue interface{}, currentData map[string]interface{}, basepath string) {
-	logger := nu.logger(basepath, name)
-
-	current, present := currentData[name]
-	if !(present && optionValueEqual(current, desiredValue)) {
-		if logger != nil {
-			logger = logger.WithValues("value", desiredValue)
+func (su *sectionUpdater) SetOpt(name string, desiredValue interface{}) nodeSectionUpdater {
+	current, present := su.data[name]
+	desiredValue = deref(desiredValue)
+	if !(present && optionValueEqual(deref(current), desiredValue)) {
+		if su.log != nil {
+			su.log = su.log.WithValues("option", name, "value", desiredValue)
 			if present {
-				logger.Info("updating option data")
+				su.log.Info("updating option data")
 			} else {
-				logger.Info("adding option data")
+				su.log.Info("adding option data")
 			}
 		}
-		nu.Updates = append(nu.Updates,
+		su.updates = append(su.updates,
 			nodes.UpdateOperation{
 				Op:    nodes.AddOp, // Add also does replace
-				Path:  nu.path(basepath, name),
+				Path:  su.path(name),
 				Value: desiredValue,
 			})
 	}
+	return su
 }
 
-func (nu *nodeUpdater) clearSectionOpt(name string, currentData map[string]interface{}, basepath string) {
-	logger := nu.logger(basepath, name)
-
-	_, present := currentData[name]
+func (su *sectionUpdater) ClearOpt(name string) nodeSectionUpdater {
+	_, present := su.data[name]
 	if present {
-		if logger != nil {
-			logger.Info("removing option data")
+		if su.log != nil {
+			su.log.Info("removing option data", "option", name)
 		}
-		nu.Updates = append(nu.Updates,
+		su.updates = append(su.updates,
 			nodes.UpdateOperation{
 				Op:   nodes.RemoveOp,
-				Path: nu.path(basepath, name),
+				Path: su.path(name),
 			})
 	}
+	return su
 }
-
-func (nu *nodeUpdater) SetTopLevelOpt(name string, desiredValue, currentValue interface{}) *nodeUpdater {
-	currentData := map[string]interface{}{name: currentValue}
-	nu.setSectionOpt(name, desiredValue, currentData, "")
-	return nu
-}
-
-func (nu *nodeUpdater) SetPropertiesOpt(name string, desiredValue interface{}, node *nodes.Node) *nodeUpdater {
-	nu.setSectionOpt(name, desiredValue, node.Properties, "/properties")
-	return nu
-}
-
-func (nu *nodeUpdater) SetInstanceInfoOpt(name string, desiredValue interface{}, node *nodes.Node) *nodeUpdater {
-	nu.setSectionOpt(name, desiredValue, node.InstanceInfo, "/instance_info")
-	return nu
-}
-
-func (nu *nodeUpdater) ClearInstanceInfoOpt(name string, node *nodes.Node) *nodeUpdater {
-	nu.clearSectionOpt(name, node.InstanceInfo, "/instance_info")
-	return nu
-}
-
