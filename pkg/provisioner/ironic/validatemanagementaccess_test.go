@@ -415,6 +415,7 @@ func TestValidateManagementAccessNewCredentials(t *testing.T) {
 	assert.Equal(t, "uuid", provID)
 
 	updates := ironic.GetLastNodeUpdateRequestFor("uuid")
+	assert.Equal(t, "/driver_info", updates[0].Path)
 	newValues := updates[0].Value.(map[string]interface{})
 	assert.Equal(t, "test.bmc", newValues["test_address"])
 }
