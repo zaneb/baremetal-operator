@@ -513,19 +513,18 @@ func (p *ironicProvisioner) ValidateManagementAccess(data provisioner.Management
 		// target provision state to manageable, which happens
 		// below.
 	}
+	updater := updateNode(ironicNode, p.debugLog)
 	if data.CurrentImage != nil {
-		updatesImage, optsErr := p.getImageUpdateOptsForNode(ironicNode, data.CurrentImage, data.BootMode)
+		optsErr := p.getImageUpdateOptsForNode(updater, data.CurrentImage, data.BootMode)
 		if optsErr != nil {
 			result, err = transientError(errors.Wrap(optsErr, "Could not get Image options for node"))
 			return
 		}
-		updates = append(updates, updatesImage...)
 	}
-	updates = append(updates,
-		updateNode(ironicNode, p.debugLog).Root().
-			SetOpt("automated_clean",
-				data.AutomatedCleaningMode != metal3v1alpha1.CleaningModeDisabled).
-			Updates()...)
+	updater.Root().
+		SetOpt("automated_clean",
+			data.AutomatedCleaningMode != metal3v1alpha1.CleaningModeDisabled)
+	updates = append(updates, updater.Updates()...)
 
 	if len(updates) != 0 {
 		_, err = nodes.Update(p.client, ironicNode.UUID, updates).Extract()
@@ -748,8 +747,8 @@ func (p *ironicProvisioner) UpdateHardwareState() (hwState provisioner.HardwareS
 	return
 }
 
-func (p *ironicProvisioner) setLiveIsoUpdateOptsForNode(ironicNode *nodes.Node, imageData *metal3v1alpha1.Image, updates nodes.UpdateOpts) (nodes.UpdateOpts, error) {
-	u := updateNode(ironicNode, p.debugLog).
+func (p *ironicProvisioner) setLiveIsoUpdateOptsForNode(updater *nodeUpdater, imageData *metal3v1alpha1.Image) error {
+	updater.
 		Root().
 		SetOpt("deploy_interface", "ramdisk").
 		InstanceInfo().
@@ -759,14 +758,14 @@ func (p *ironicProvisioner) setLiveIsoUpdateOptsForNode(ironicNode *nodes.Node, 
 		ClearOpt("image_os_hash_algo").
 		ClearOpt("image_checksum")
 
-	return append(updates, u.Updates()...), nil
+	return nil
 }
 
-func (p *ironicProvisioner) setDirectDeployUpdateOptsForNode(ironicNode *nodes.Node, imageData *metal3v1alpha1.Image, updates nodes.UpdateOpts) (nodes.UpdateOpts, error) {
+func (p *ironicProvisioner) setDirectDeployUpdateOptsForNode(updater *nodeUpdater, imageData *metal3v1alpha1.Image) error {
 	checksum, checksumType, ok := imageData.GetChecksum()
 	if !ok {
 		p.log.Info("image/checksum not found for host")
-		return updates, nil
+		return nil
 	}
 
 	// FIXME: For older versions of ironic that do not have
@@ -780,10 +779,11 @@ func (p *ironicProvisioner) setDirectDeployUpdateOptsForNode(ironicNode *nodes.N
 		legacyChecksum = checksum
 	}
 
-	u := updateNode(ironicNode, p.debugLog).
+	updater.
 		Root().
-		SetOpt("deploy_interface", "direct").
-		InstanceInfo().
+		SetOpt("deploy_interface", "direct")
+	ii := updater.InstanceInfo()
+	ii.
 		ClearOpt("boot_iso").
 		SetOpt("image_source", imageData.URL).
 		SetOpt("image_os_hash_algo", checksumType).
@@ -791,15 +791,14 @@ func (p *ironicProvisioner) setDirectDeployUpdateOptsForNode(ironicNode *nodes.N
 		SetOpt("image_checksum", legacyChecksum)
 
 	if imageData.DiskFormat != nil {
-		u.SetOpt("image_disk_format", *imageData.DiskFormat)
+		ii.SetOpt("image_disk_format", *imageData.DiskFormat)
 	} else {
-		u.ClearOpt("image_disk_format")
+		ii.ClearOpt("image_disk_format")
 	}
-	return append(updates, u.Updates()...), nil
+	return nil
 }
 
-func (p *ironicProvisioner) getImageUpdateOptsForNode(ironicNode *nodes.Node, imageData *metal3v1alpha1.Image, bootMode metal3v1alpha1.BootMode) (updates nodes.UpdateOpts, err error) {
-	updater := updateNode(ironicNode, p.debugLog)
+func (p *ironicProvisioner) getImageUpdateOptsForNode(updater *nodeUpdater, imageData *metal3v1alpha1.Image, bootMode metal3v1alpha1.BootMode) error {
 	// instance_uuid
 	updater.Root().SetOpt("instance_uuid", string(p.objectMeta.UID))
 
@@ -816,35 +815,30 @@ func (p *ironicProvisioner) getImageUpdateOptsForNode(ironicNode *nodes.Node, im
 	}
 
 	updater.InstanceInfo().SetOpt("capabilities", capabilitiesII)
-	updates = updater.Updates()
 
 	// Set live-iso format options
 	if imageData.DiskFormat != nil && *imageData.DiskFormat == "live-iso" {
-		return p.setLiveIsoUpdateOptsForNode(ironicNode, imageData, updates)
+		return p.setLiveIsoUpdateOptsForNode(updater, imageData)
 	}
 
 	// Set deploy_interface direct options when not booting a live-iso
-	return p.setDirectDeployUpdateOptsForNode(ironicNode, imageData, updates)
+	return p.setDirectDeployUpdateOptsForNode(updater, imageData)
 }
 
-func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data provisioner.ProvisionData) (updates nodes.UpdateOpts, err error) {
-	imageOpts, err := p.getImageUpdateOptsForNode(ironicNode, &data.Image, data.BootMode)
-	if err != nil {
-		return updates, errors.Wrap(err, "Could not get Image options for node")
+func (p *ironicProvisioner) getUpdateOptsForNode(ironicNode *nodes.Node, data provisioner.ProvisionData) (nodes.UpdateOpts, error) {
+	updater := updateNode(ironicNode, p.debugLog)
+	if err := p.getImageUpdateOptsForNode(updater, &data.Image, data.BootMode); err != nil {
+		return nil, errors.Wrap(err, "Could not get Image options for node")
 	}
-	updates = append(updates, imageOpts...)
 
-	updates = append(updates,
-		updateNode(ironicNode, p.debugLog).
-			Properties().
-			SetOpt("root_device", devicehints.MakeHintMap(data.RootDeviceHints)).
-			// FIXME(dhellmann): This should come from inspecting the host.
-			SetOpt("cpu_arch", data.HardwareProfile.CPUArch).
-			SetOpt("local_gb", data.HardwareProfile.LocalGB).
-			SetOpt("capabilities", buildCapabilitiesValue(ironicNode, data.BootMode)).
-			Updates()...)
+	updater.Properties().
+		SetOpt("root_device", devicehints.MakeHintMap(data.RootDeviceHints)).
+		// FIXME(dhellmann): This should come from inspecting the host.
+		SetOpt("cpu_arch", data.HardwareProfile.CPUArch).
+		SetOpt("local_gb", data.HardwareProfile.LocalGB).
+		SetOpt("capabilities", buildCapabilitiesValue(ironicNode, data.BootMode))
 
-	return updates, nil
+	return updater.Updates(), nil
 }
 
 // We can't just replace the capabilities because we need to keep the
