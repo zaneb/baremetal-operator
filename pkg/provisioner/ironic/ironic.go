@@ -1089,20 +1089,20 @@ func (p *ironicProvisioner) ironicHasSameImage(ironicNode *nodes.Node, image met
 	return sameImage
 }
 
-func (p *ironicProvisioner) buildManualCleaningSteps(bmcAccess bmc.AccessDetails, data provisioner.PrepareData) (cleanSteps []nodes.CleanStep, err error) {
+func (p *ironicProvisioner) buildManualCleaningSteps(bmcAccess bmc.AccessDetails, data provisioner.PrepareData, force bool) (cleanSteps []nodes.CleanStep, err error) {
 	// Build raid clean steps
 	if bmcAccess.RAIDInterface() != "no-raid" {
-		cleanSteps = append(cleanSteps, BuildRAIDCleanSteps(data.RAIDConfig)...)
+		cleanSteps = append(cleanSteps,
+			BuildRAIDCleanSteps(data.RAIDConfig,
+				force || data.PreviousSettings.RAIDConfig != nil)...)
 	} else if data.RAIDConfig != nil {
 		return nil, fmt.Errorf("RAID settings are defined, but the node's driver %s does not support RAID", bmcAccess.Driver())
 	}
 
-	// TODO: Add manual cleaning steps for host configuration
-
 	return
 }
 
-func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, ironicNode *nodes.Node, data provisioner.PrepareData) (success bool, result provisioner.Result, err error) {
+func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, ironicNode *nodes.Node, data provisioner.PrepareData, force bool) (success bool, result provisioner.Result, err error) {
 	if bmcAccess.RAIDInterface() != "no-raid" {
 		// Set raid configuration
 		err = setTargetRAIDCfg(p, ironicNode, data)
@@ -1113,7 +1113,7 @@ func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, iro
 	}
 
 	// Build manual clean steps
-	cleanSteps, err := p.buildManualCleaningSteps(bmcAccess, data)
+	cleanSteps, err := p.buildManualCleaningSteps(bmcAccess, data, force)
 	if err != nil {
 		result, err = operationFailed(err.Error())
 		return
@@ -1136,7 +1136,7 @@ func (p *ironicProvisioner) startManualCleaning(bmcAccess bmc.AccessDetails, iro
 
 // Prepare remove existing configuration and set new configuration.
 // If `started` is true,  it means that we successfully executed `tryChangeNodeProvisionState`.
-func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared bool) (result provisioner.Result, started bool, err error) {
+func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared, force bool) (result provisioner.Result, started bool, err error) {
 	bmcAccess, err := p.bmcAccess()
 	if err != nil {
 		result, err = transientError(err)
@@ -1153,7 +1153,7 @@ func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared boo
 	case nodes.Available:
 		if unprepared {
 			var cleanSteps []nodes.CleanStep
-			cleanSteps, err = p.buildManualCleaningSteps(bmcAccess, data)
+			cleanSteps, err = p.buildManualCleaningSteps(bmcAccess, data, force)
 			if err != nil {
 				result, err = operationFailed(err.Error())
 				return
@@ -1173,7 +1173,7 @@ func (p *ironicProvisioner) Prepare(data provisioner.PrepareData, unprepared boo
 
 	case nodes.Manageable:
 		if unprepared {
-			started, result, err = p.startManualCleaning(bmcAccess, ironicNode, data)
+			started, result, err = p.startManualCleaning(bmcAccess, ironicNode, data, force)
 			if started || result.Dirty || result.ErrorMessage != "" || err != nil {
 				return
 			}

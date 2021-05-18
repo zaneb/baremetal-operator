@@ -295,7 +295,7 @@ func TestBuildRAIDCleanSteps(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			step := BuildRAIDCleanSteps(c.raid)
+			step := BuildRAIDCleanSteps(c.raid, true)
 			if !reflect.DeepEqual(c.expected, step) {
 				t.Errorf("expected: %v, got: %v", c.expected, step)
 			}

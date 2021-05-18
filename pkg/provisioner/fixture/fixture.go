@@ -184,9 +184,9 @@ func (p *fixtureProvisioner) UpdateHardwareState() (hwState provisioner.Hardware
 }
 
 // Prepare remove existing configuration and set new configuration
-func (p *fixtureProvisioner) Prepare(data provisioner.PrepareData, unprepared bool) (result provisioner.Result, started bool, err error) {
+func (p *fixtureProvisioner) Prepare(data provisioner.PrepareData, unprepared, force bool) (result provisioner.Result, started bool, err error) {
 	p.log.Info("preparing host")
-	started = unprepared
+	started = unprepared || force
 	return
 }
 

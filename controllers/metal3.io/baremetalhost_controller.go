@@ -756,11 +756,18 @@ func (r *BareMetalHostReconciler) actionPreparing(prov provisioner.Provisioner, 
 	}
 
 	prepareData := provisioner.PrepareData{
-		RAIDConfig:      newStatus.Provisioning.RAID.DeepCopy(),
-		RootDeviceHints: newStatus.Provisioning.RootDeviceHints.DeepCopy(),
+		PrepareSettings: provisioner.PrepareSettings{
+			RAIDConfig:      newStatus.Provisioning.RAID.DeepCopy(),
+			RootDeviceHints: newStatus.Provisioning.RootDeviceHints.DeepCopy(),
+		},
+		PreviousSettings: provisioner.PrepareSettings{
+			RAIDConfig:      info.host.Status.Provisioning.RAID.DeepCopy(),
+			RootDeviceHints: info.host.Status.Provisioning.RootDeviceHints.DeepCopy(),
+		},
 	}
 	provResult, started, err := prov.Prepare(prepareData,
-		dirty || info.host.Status.ErrorType == metal3v1alpha1.PreparationError)
+		dirty,
+		info.host.Status.ErrorType == metal3v1alpha1.PreparationError)
 	if err != nil {
 		return actionError{errors.Wrap(err, "error preparing host")}
 	}
@@ -778,7 +785,7 @@ func (r *BareMetalHostReconciler) actionPreparing(prov provisioner.Provisioner, 
 			return actionError{errors.Wrap(err, "could not save the host provisioning settings")}
 		}
 	}
-	if clearError(info.host) {
+	if started && clearError(info.host) {
 		dirty = true
 	}
 	if provResult.Dirty {
