@@ -1346,8 +1346,6 @@ rules:
   resources:
   - preprovisioningimages
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
