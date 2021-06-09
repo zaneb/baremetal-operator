@@ -16,6 +16,7 @@ import (
 	promutil "github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -124,7 +125,9 @@ func TestProvisioningCapacity(t *testing.T) {
 		t.Run(tc.Scenario, func(t *testing.T) {
 			prov := newMockProvisioner()
 			prov.setHasCapacity(tc.HasProvisioningCapacity)
-			hsm := newHostStateMachine(tc.Host, &BareMetalHostReconciler{}, prov, true)
+			hsm := newHostStateMachine(tc.Host, &BareMetalHostReconciler{
+				Client: fakeclient.NewFakeClient(),
+			}, prov, true)
 			info := makeDefaultReconcileInfo(tc.Host)
 			delayedProvisioningHostCounters.Reset()
 
@@ -178,7 +181,9 @@ func TestDeprovisioningCapacity(t *testing.T) {
 		t.Run(tc.Scenario, func(t *testing.T) {
 			prov := newMockProvisioner()
 			prov.setHasCapacity(tc.HasDeprovisioningCapacity)
-			hsm := newHostStateMachine(tc.Host, &BareMetalHostReconciler{}, prov, true)
+			hsm := newHostStateMachine(tc.Host, &BareMetalHostReconciler{
+				Client: fakeclient.NewFakeClient(),
+			}, prov, true)
 			info := makeDefaultReconcileInfo(tc.Host)
 			delayedDeprovisioningHostCounters.Reset()
 
@@ -363,7 +368,9 @@ func TestDetach(t *testing.T) {
 				}
 			}
 			prov := newMockProvisioner()
-			hsm := newHostStateMachine(tc.Host, &BareMetalHostReconciler{}, prov, true)
+			hsm := newHostStateMachine(tc.Host, &BareMetalHostReconciler{
+				Client: fakeclient.NewFakeClient(),
+			}, prov, true)
 			info := makeDefaultReconcileInfo(tc.Host)
 			result := hsm.ReconcileState(info)
 
@@ -853,7 +860,9 @@ func TestErrorCountIncreasedOnActionFailure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Scenario, func(t *testing.T) {
 			prov := newMockProvisioner()
-			hsm := newHostStateMachine(tt.Host, &BareMetalHostReconciler{}, prov, true)
+			hsm := newHostStateMachine(tt.Host, &BareMetalHostReconciler{
+				Client: fakeclient.NewFakeClient(),
+			}, prov, true)
 			info := makeDefaultReconcileInfo(tt.Host)
 
 			prov.setNextError(tt.ProvisionerErrorOn, "some error")
@@ -913,7 +922,9 @@ func TestErrorCountClearedOnStateTransition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Scenario, func(t *testing.T) {
 			prov := newMockProvisioner()
-			hsm := newHostStateMachine(tt.Host, &BareMetalHostReconciler{}, prov, true)
+			hsm := newHostStateMachine(tt.Host, &BareMetalHostReconciler{
+				Client: fakeclient.NewFakeClient(),
+			}, prov, true)
 			info := makeDefaultReconcileInfo(tt.Host)
 
 			info.host.Status.ErrorCount = 1
@@ -950,7 +961,9 @@ func TestErrorClean(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.Scenario, func(t *testing.T) {
 			prov := newMockProvisioner()
-			hsm := newHostStateMachine(tt.Host, &BareMetalHostReconciler{}, prov, true)
+			hsm := newHostStateMachine(tt.Host, &BareMetalHostReconciler{
+				Client: fakeclient.NewFakeClient(),
+			}, prov, true)
 
 			info := makeDefaultReconcileInfo(tt.Host)
 			if tt.SecretName != "" {

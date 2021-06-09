@@ -31,11 +31,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -50,6 +52,7 @@ import (
 const (
 	hostErrorRetryDelay           = time.Second * 10
 	unmanagedRetryDelay           = time.Minute * 10
+	preprovImageRetryDelay        = time.Minute * 5
 	provisionerNotReadyRetryDelay = time.Second * 30
 	rebootAnnotationPrefix        = "reboot.metal3.io"
 	inspectAnnotationPrefix       = "inspect.metal3.io"
@@ -83,6 +86,7 @@ func (info *reconcileInfo) publishEvent(reason, message string) {
 
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=metal3.io,resources=preprovisioningimages,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 
@@ -592,6 +596,128 @@ func (r *BareMetalHostReconciler) detachHost(prov provisioner.Provisioner, info 
 	return slowPoll
 }
 
+type imageBuildError struct {
+	Message string
+}
+
+func (ibe *imageBuildError) Error() string {
+	return ibe.Message
+}
+
+func (r *BareMetalHostReconciler) preprovImageCurrent(info *reconcileInfo, image *metal3v1alpha1.PreprovisioningImage) (bool, error) {
+	if image.Status.Architecture != image.Spec.Architecture {
+		info.log.Info("pre-provisioning image architecture mismatch",
+			"wanted", image.Spec.Architecture,
+			"current", image.Status.Architecture)
+		return false, nil
+	}
+
+	if image.Spec.NetworkDataName != "" {
+		secretKey := client.ObjectKey{
+			Name:      image.Spec.NetworkDataName,
+			Namespace: image.ObjectMeta.Namespace,
+		}
+		secretManager := r.secretManager(info.log)
+		networkData, err := secretManager.AcquireSecret(secretKey, info.host, false)
+		if err != nil {
+			return false, err
+		}
+		if image.Status.NetworkData.Version != networkData.GetResourceVersion() {
+			info.log.Info("network data in pre-provisioning image is out of date")
+			return false, nil
+		}
+	}
+	if image.Status.NetworkData.Name != image.Spec.NetworkDataName {
+		info.log.Info("network data location in pre-provisioning image is out of date")
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func getHostArchitecture(host *metal3v1alpha1.BareMetalHost) string {
+	if host.Status.HardwareDetails != nil &&
+		host.Status.HardwareDetails.CPU.Arch != "" {
+		return host.Status.HardwareDetails.CPU.Arch
+	}
+	if hwprof, err := hardware.GetProfile(getHardwareProfileName(host)); err == nil {
+		return hwprof.CPUArch
+	}
+	return ""
+}
+
+func (r *BareMetalHostReconciler) getPreprovImage(info *reconcileInfo, formats []metal3v1alpha1.ImageFormat) (*provisioner.PreprovisioningImage, error) {
+	if formats == nil {
+		// No image build requested
+		return nil, nil
+	}
+
+	if len(formats) == 0 {
+		return nil, &imageBuildError{"no acceptable formats for preprovisioning image"}
+	}
+
+	expectedSpec := metal3v1alpha1.PreprovisioningImageSpec{
+		NetworkDataName: info.host.Spec.PreprovisioningNetworkDataName,
+		Architecture:    getHostArchitecture(info.host),
+	}
+
+	preprovImage := metal3v1alpha1.PreprovisioningImage{}
+	key := client.ObjectKey{
+		Name:      info.host.Name,
+		Namespace: info.host.Namespace,
+	}
+	err := r.Get(context.TODO(), key, &preprovImage)
+	if k8serrors.IsNotFound(err) {
+		info.log.Info("creating new PreprovisioningImage")
+		preprovImage = metal3v1alpha1.PreprovisioningImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      key.Name,
+				Namespace: key.Namespace,
+			},
+			Spec: expectedSpec,
+		}
+		controllerutil.SetControllerReference(info.host, &preprovImage, r.Scheme())
+		err = r.Create(context.TODO(), &preprovImage)
+		return nil, err
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to retrieve pre-provisioning image data")
+	}
+
+	if !apiequality.Semantic.DeepEqual(preprovImage.Spec, expectedSpec) {
+		info.log.Info("updating PreprovisioningImage spec")
+		preprovImage.Spec = expectedSpec
+		err = r.Update(context.TODO(), &preprovImage)
+		return nil, err
+	}
+	if current, err := r.preprovImageCurrent(info, &preprovImage); err != nil || !current {
+		return nil, err
+	}
+
+	for _, cond := range preprovImage.Status.Conditions {
+		if cond.Status == metav1.ConditionTrue {
+			switch metal3v1alpha1.ImageStatusConditionType(cond.Type) {
+			case metal3v1alpha1.ConditionImageReady:
+				image := provisioner.PreprovisioningImage{
+					ImageURL:     preprovImage.Status.ImageUrl,
+					Format:       preprovImage.Status.Format,
+					Checksum:     preprovImage.Status.Checksum,
+					ChecksumType: preprovImage.Status.ChecksumType,
+				}
+				info.log.Info("using PreprovisioningImage")
+				return &image, nil
+			case metal3v1alpha1.ConditionImageError:
+				info.log.Info("error building PreprovisioningImage",
+					"message", cond.Message)
+				return nil, &imageBuildError{cond.Message}
+			}
+		}
+	}
+
+	info.log.Info("pending PreprovisioningImage not ready")
+	return nil, nil
+}
+
 // Test the credentials by connecting to the management controller.
 func (r *BareMetalHostReconciler) registerHost(prov provisioner.Provisioner, info *reconcileInfo) actionResult {
 	info.log.Info("registering and validating access to management controller",
@@ -606,16 +732,39 @@ func (r *BareMetalHostReconciler) registerHost(prov provisioner.Provisioner, inf
 		dirty = true
 	}
 
+	preprovImgFormats, err := prov.PreprovisioningImageFormats()
+	if err != nil {
+		return actionError{err}
+	}
+
+	preprovImg, err := r.getPreprovImage(info, preprovImgFormats)
+	if err != nil {
+		if errors.Is(err, &imageBuildError{}) {
+			return recordActionFailure(info, metal3v1alpha1.RegistrationError, err.Error())
+		}
+		return actionError{err}
+	}
+
 	provResult, provID, err := prov.ValidateManagementAccess(
 		provisioner.ManagementAccessData{
 			BootMode:              info.host.Status.Provisioning.BootMode,
 			AutomatedCleaningMode: info.host.Spec.AutomatedCleaningMode,
 			State:                 info.host.Status.Provisioning.State,
 			CurrentImage:          getCurrentImage(info.host),
+			PreprovisioningImage:  preprovImg,
 			HasCustomDeploy:       hasCustomDeploy(info.host),
 		},
 		credsChanged,
 		info.host.Status.ErrorType == metal3v1alpha1.RegistrationError)
+
+	if errors.Is(err, provisioner.ErrNeedsPreprovisioningImage) {
+		if preprovImg == nil {
+			waitingForPreprovImage.Inc()
+			return actionContinue{preprovImageRetryDelay}
+		}
+		return recordActionFailure(info, metal3v1alpha1.RegistrationError,
+			"Preprovisioning Image is not acceptable to provisioner")
+	}
 	if err != nil {
 		noManagementAccess.Inc()
 		return actionError{errors.Wrap(err, "failed to validate BMC access")}
@@ -1357,5 +1506,6 @@ func (r *BareMetalHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			}).
 		WithOptions(opts).
 		Owns(&corev1.Secret{}).
+		Owns(&metal3v1alpha1.PreprovisioningImage{}).
 		Complete(r)
 }
