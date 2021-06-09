@@ -307,7 +307,6 @@ func TestValidateManagementAccessExistingNodeContinue(t *testing.T) {
 				ProvisionState: string(status),
 				AutomatedClean: &clean,
 				DriverInfo: map[string]interface{}{
-					"deploy_iso":     "http://deploy.test/ipa.iso",
 					"deploy_kernel":  "http://deploy.test/ipa.kernel",
 					"deploy_ramdisk": "http://deploy.test/ipa.initramfs",
 					"test_address":   "test.bmc",
@@ -402,7 +401,6 @@ func TestValidateManagementAccessExistingSteadyStateNoUpdate(t *testing.T) {
 				DeployInterface: imageType.DeployInterface,
 				InstanceInfo:    imageType.InstanceInfo,
 				DriverInfo: map[string]interface{}{
-					"deploy_iso":     "http://deploy.test/ipa.iso",
 					"deploy_kernel":  "http://deploy.test/ipa.kernel",
 					"deploy_ramdisk": "http://deploy.test/ipa.initramfs",
 					"test_address":   "test.bmc",
@@ -458,7 +456,6 @@ func TestValidateManagementAccessExistingNodeWaiting(t *testing.T) {
 				UUID:           "uuid", // to match status in host
 				ProvisionState: string(status),
 				DriverInfo: map[string]interface{}{
-					"deploy_iso":     "http://deploy.test/ipa.iso",
 					"deploy_kernel":  "http://deploy.test/ipa.kernel",
 					"deploy_ramdisk": "http://deploy.test/ipa.initramfs",
 					"test_address":   "test.bmc",
