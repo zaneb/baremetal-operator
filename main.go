@@ -150,9 +150,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupChecks(mgr)
-
 	// +kubebuilder:scaffold:builder
+
+	setupChecks(mgr)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
