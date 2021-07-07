@@ -438,11 +438,7 @@ func (p *ironicProvisioner) ValidateManagementAccess(data provisioner.Management
 			}
 		}
 
-		// Look for the case where we previously enrolled this node
-		// and now the credentials have changed.
-		if credentialsChanged {
-			updater.SetTopLevelOpt("driver_info", driverInfo, nil)
-		}
+		updater.SetTopLevelOpt("driver_info", driverInfo, ironicNode.DriverInfo)
 
 		// We don't return here because we also have to set the
 		// target provision state to manageable, which happens
