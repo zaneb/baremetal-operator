@@ -8,8 +8,6 @@ require (
 	github.com/gophercloud/gophercloud v0.16.0
 	github.com/hashicorp/go-version v1.2.0 // indirect
 	github.com/metal3-io/baremetal-operator/apis v0.0.0
-	github.com/onsi/ginkgo v1.16.4 // indirect
-	github.com/onsi/gomega v1.13.0 // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/stretchr/testify v1.7.0
